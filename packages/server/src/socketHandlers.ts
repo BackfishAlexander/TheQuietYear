@@ -128,6 +128,13 @@ export function registerHandlers(io: Server, socket: TypedSocket) {
     applyGameUpdate(io, roomId, gameManager.handleChoosePrompt(room.game, playerId, choice), socket);
   });
 
+  socket.on('turn:narrate', ({ text }) => {
+    const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
+    const room = roomManager.getRoom(roomId);
+    if (!room?.game) return;
+    applyGameUpdate(io, roomId, gameManager.handleNarrate(room.game, playerId, text), socket);
+  });
+
   socket.on('turn:action', ({ action }) => {
     const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
     const room = roomManager.getRoom(roomId);

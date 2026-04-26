@@ -139,7 +139,7 @@ export function handleChoosePrompt(state: GameState, playerId: string, choice: '
   if (choice === 'B' && !state.currentCard.promptB) return { error: 'No option B for this card' };
 
   // Apply special card rules
-  let newState = { ...state, chosenPrompt: choice, turnPhase: 'choose-action' as const };
+  let newState = { ...state, chosenPrompt: choice, turnPhase: 'narrate-card' as const };
 
   // Handle skip dice reduction flags
   const card = state.currentCard;
@@ -151,6 +151,17 @@ export function handleChoosePrompt(state: GameState, playerId: string, choice: '
   newState = addEvent(newState, playerId, 'prompt-chosen',
     `Chose option ${choice}: "${choice === 'A' ? card.promptA : card.promptB}"`);
 
+  return newState;
+}
+
+export function handleNarrate(state: GameState, playerId: string, text: string): GameState | { error: string } {
+  if (state.turnOrder[state.activePlayerIndex] !== playerId) return { error: 'Not your turn' };
+  if (state.turnPhase !== 'narrate-card') return { error: 'Not time to narrate' };
+
+  let newState = { ...state, turnPhase: 'choose-action' as const };
+  if (text.trim()) {
+    newState = addEvent(newState, playerId, 'prompt-chosen', text.trim());
+  }
   return newState;
 }
 

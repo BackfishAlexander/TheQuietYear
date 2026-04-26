@@ -3,6 +3,7 @@ import type { ClientEvents, ServerEvents } from '@quiet-year/shared';
 import { useGameStore } from '../../store/gameStore';
 import { MapCanvas } from './MapCanvas';
 import { TurnBar } from './TurnBar';
+import { ActionPanel } from './ActionPanel';
 import { CardDisplay } from './CardDisplay';
 import { ResourceCard } from './ResourceCard';
 import { ProjectList } from './ProjectList';
@@ -24,13 +25,13 @@ export function GameLayout({ socket }: { socket: TypedSocket }) {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Top bar */}
+      {/* Slim top status bar */}
       <TurnBar socket={socket} seasonColor={seasonColor} />
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* Left sidebar */}
         <div style={{
-          width: 280, borderRight: '1px solid #d4c5a9', background: '#faf6ee',
+          width: 260, borderRight: '1px solid #e8e0d0', background: '#faf6ee',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}>
           <ResourceCard socket={socket} />
@@ -38,9 +39,12 @@ export function GameLayout({ socket }: { socket: TypedSocket }) {
           <ContemptBar socket={socket} />
         </div>
 
-        {/* Center: Canvas */}
+        {/* Center: Canvas + floating action panel */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           <MapCanvas socket={socket} />
+
+          {/* Floating action panel at bottom center */}
+          <ActionPanel socket={socket} />
 
           {/* Setup overlay */}
           {isSetup && <SetupFlow socket={socket} />}
@@ -58,7 +62,7 @@ export function GameLayout({ socket }: { socket: TypedSocket }) {
 
         {/* Right sidebar: event log */}
         <div style={{
-          width: 260, borderLeft: '1px solid #d4c5a9', background: '#faf6ee',
+          width: 240, borderLeft: '1px solid #e8e0d0', background: '#faf6ee',
           overflow: 'hidden',
         }}>
           <EventLog />

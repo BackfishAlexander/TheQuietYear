@@ -37,6 +37,7 @@ export type GamePhase = 'lobby' | 'setup-terrain' | 'setup-resources' | 'playing
 export type TurnPhase =
   | 'draw-card'
   | 'resolve-card'
+  | 'narrate-card'
   | 'choose-action'
   | 'action-discover'
   | 'action-discuss'
@@ -122,6 +123,7 @@ export interface ClientEvents {
   'setup:finishTerrain': () => void;
   'turn:drawCard': () => void;
   'turn:choosePrompt': (data: { choice: 'A' | 'B' }) => void;
+  'turn:narrate': (data: { text: string }) => void;
   'turn:action': (data: { action: 'discover' | 'discuss' | 'project' }) => void;
   'turn:discover': (data: { description: string }) => void;
   'turn:startProject': (data: { name: string; description: string; duration: number; position: { x: number; y: number } }) => void;
