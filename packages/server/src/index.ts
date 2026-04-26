@@ -3,11 +3,11 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { registerHandlers } from './socketHandlers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const isProd = process.env.NODE_ENV === 'production';
 
 const app = express();
 app.use(cors());
@@ -15,8 +15,8 @@ app.use(express.json());
 
 const server = createServer(app);
 const io = new Server(server, {
-  cors: isProd ? {} : {
-    origin: ['http://localhost:5173', 'http://localhost:5174'],
+  cors: {
+    origin: '*',
     methods: ['GET', 'POST'],
   },
 });
@@ -30,12 +30,25 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// In production, serve the built client
-if (isProd) {
-  const clientDist = path.resolve(__dirname, '../../client/dist');
+// Serve the built client - try multiple possible paths
+const possibleClientPaths = [
+  path.resolve(__dirname, '../../client/dist'),
+  path.resolve(__dirname, '../../../packages/client/dist'),
+  path.resolve(process.cwd(), 'packages/client/dist'),
+];
+
+const clientDist = possibleClientPaths.find(p => fs.existsSync(path.join(p, 'index.html')));
+
+if (clientDist) {
+  console.log(`Serving client from: ${clientDist}`);
   app.use(express.static(clientDist));
   app.get('*', (_req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
+  });
+} else {
+  console.log('No client build found, tried:', possibleClientPaths);
+  app.get('*', (_req, res) => {
+    res.status(200).send('Server is running. Client build not found — run npm run build first.');
   });
 }
 

@@ -9,7 +9,10 @@
   "scripts": {
     "dev": "concurrently \"npm run dev -w packages/server\" \"npm run dev -w packages/client\"",
     "build": "npm run build -w packages/client",
-    "start": "NODE_ENV=production npx tsx packages/server/src/index.ts"
+    "start": "tsx packages/server/src/index.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.7.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
