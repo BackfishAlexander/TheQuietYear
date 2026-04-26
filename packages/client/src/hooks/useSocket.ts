@@ -3,7 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import type { ClientEvents, ServerEvents } from '@quiet-year/shared';
 import { useGameStore } from '../store/gameStore';
 
-const SERVER_URL = 'http://localhost:3001';
+const SERVER_URL = import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin;
 
 type TypedSocket = Socket<ServerEvents, ClientEvents>;
 
