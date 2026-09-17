@@ -19,6 +19,8 @@ export interface Player {
   isHost: boolean;
   connected: boolean;
   color: string;
+  /** Host-controlled: may this player draw on the shared map? */
+  canDraw: boolean;
 }
 
 export interface Project {
@@ -98,19 +100,67 @@ export interface RoomState {
   gameStarted: boolean;
 }
 
-// Drawing types - separate from game state
+// Drawing types - separate from game state.
+// All coordinates are WORLD coordinates on an unbounded canvas; the viewport
+// maps them to screen pixels at render time.
 export interface StrokePoint {
   x: number;
   y: number;
 }
 
-export interface Stroke {
+/** Tools that lay down a freehand path. */
+export type PathTool = 'pen' | 'marker' | 'highlighter' | 'eraser';
+/** Tools defined by a drag from one corner/end to another. */
+export type ShapeTool = 'line' | 'arrow' | 'rect' | 'ellipse' | 'triangle';
+/** Every tool the toolbar can select, including ones that make no stroke. */
+export type DrawTool = PathTool | ShapeTool | 'fill' | 'pan';
+
+export interface StrokeBase {
   id: string;
   playerId: string;
-  tool: 'pen' | 'eraser';
-  points: StrokePoint[];
+  /** Server-assigned z-order. Higher draws later. */
+  seq: number;
   color: string;
   width: number;
+  /** 0-1, defaults to 1 when absent. */
+  opacity?: number;
+}
+
+export interface PathStroke extends StrokeBase {
+  kind: 'path';
+  tool: PathTool;
+  points: StrokePoint[];
+}
+
+export interface ShapeStroke extends StrokeBase {
+  kind: 'shape';
+  tool: ShapeTool;
+  start: StrokePoint;
+  end: StrokePoint;
+  /** Interior colour, or null for an outline-only shape. */
+  fillColor: string | null;
+}
+
+/**
+ * A bucket fill, stored as traced polygon contours rather than pixels so it
+ * stays resolution-independent and cheap to sync. Rendered with the even-odd
+ * rule so interior contours punch holes.
+ */
+export interface FillStroke extends StrokeBase {
+  kind: 'fill';
+  tool: 'fill';
+  contours: StrokePoint[][];
+}
+
+export type Stroke = PathStroke | ShapeStroke | FillStroke;
+
+/** The on-disk shape of a saved canvas file. */
+export interface CanvasFile {
+  format: 'quiet-year-canvas';
+  version: number;
+  savedAt: number;
+  roomId?: string;
+  strokes: Stroke[];
 }
 
 // Client -> Server events
@@ -139,6 +189,11 @@ export interface ClientEvents {
   'resource:addName': (data: { name: string }) => void;
   'draw:stroke': (data: Stroke) => void;
   'draw:undo': () => void;
+  'draw:redo': () => void;
+  'draw:clear': () => void;
+  'draw:load': (data: { strokes: Stroke[] }) => void;
+  'admin:setDrawPermission': (data: { playerId: string; canDraw: boolean }) => void;
+  'admin:setAllDrawPermissions': (data: { canDraw: boolean }) => void;
 }
 
 // Server -> Client events
@@ -150,5 +205,8 @@ export interface ServerEvents {
   'game:state': (data: GameState) => void;
   'draw:stroke': (data: Stroke) => void;
   'draw:history': (data: Stroke[]) => void;
-  'draw:undo': (data: { playerId: string; strokeId: string }) => void;
+  /** A stroke was undone (or removed by an admin) and should disappear. */
+  'draw:remove': (data: { playerId: string; strokeId: string }) => void;
+  /** A previously undone stroke came back; re-insert it by seq. */
+  'draw:restore': (data: Stroke) => void;
 }

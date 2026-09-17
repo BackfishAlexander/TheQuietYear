@@ -5,25 +5,64 @@ import { useGameStore } from '../../store/gameStore';
 
 type TypedSocket = Socket<ServerEvents, ClientEvents>;
 
+const PHASE_TITLES: Record<string, string> = {
+  'terrain': 'Sketch Your Territory',
+  'resources-declare': 'Declare Resources',
+  'resources-vote': 'Choose the Abundance',
+};
+
 export function SetupFlow({ socket }: { socket: TypedSocket }) {
   const { gameState, playerId } = useGameStore();
   const [resource, setResource] = useState('');
+  // Setup happens over the map, and the terrain phase asks players to draw on
+  // it, so the panel has to be able to get out of the way.
+  const [collapsed, setCollapsed] = useState(false);
 
   if (!gameState) return null;
 
   const isHost = gameState.players.find(p => p.isHost)?.id === playerId;
   const setup = gameState.setup;
 
+  if (collapsed) {
+    return (
+      <button
+        onClick={() => setCollapsed(false)}
+        title={`Reopen setup: ${PHASE_TITLES[setup.phase] ?? 'Continue'}`}
+        style={{
+          position: 'absolute', left: 12, top: 12, zIndex: 25,
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 14px', fontFamily: 'Georgia, serif', fontSize: 13,
+          background: '#4a7c59', color: 'white', border: 'none', borderRadius: 8,
+          cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.22)',
+        }}
+      >
+        Setup ▸
+      </button>
+    );
+  }
+
   return (
     <div style={{
       position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 25,
     }}>
       <div style={{
         background: '#faf6ee', borderRadius: 12, padding: 32,
         maxWidth: 480, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-        border: '3px solid #4a7c59',
+        border: '3px solid #4a7c59', position: 'relative',
       }}>
+        <button
+          onClick={() => setCollapsed(true)}
+          title="Hide this panel so you can draw"
+          style={{
+            position: 'absolute', top: 10, right: 12, border: 'none',
+            background: 'none', cursor: 'pointer', fontSize: 13,
+            fontFamily: 'Georgia, serif', color: '#777',
+          }}
+        >
+          Hide ✕
+        </button>
+
         {/* Terrain Phase */}
         {setup.phase === 'terrain' && (
           <>
@@ -37,8 +76,14 @@ export function SetupFlow({ socket }: { socket: TypedSocket }) {
               Use the drawing tools on the canvas behind this panel.
             </p>
             <p style={{ fontSize: 13, color: '#888', fontStyle: 'italic', marginBottom: 16 }}>
-              Close this panel to draw, then reopen when ready.
+              Hide this panel to reach the drawing tools, then reopen it when you're ready.
             </p>
+            <button
+              onClick={() => setCollapsed(true)}
+              style={{ ...bigBtn, background: '#6c757d', width: '100%', marginBottom: 10 }}
+            >
+              Hide panel and draw
+            </button>
             {isHost ? (
               <button
                 onClick={() => socket.emit('setup:finishTerrain')}

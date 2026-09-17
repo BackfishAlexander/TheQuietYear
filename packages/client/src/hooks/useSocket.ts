@@ -24,7 +24,7 @@ export function useSocket() {
   const {
     setPlayerId, setRoomId, setConnected,
     setRoomState, setGameState,
-    addStroke, setStrokes, removeStroke,
+    upsertStroke, setStrokes, removeStroke,
     setError,
   } = useGameStore();
 
@@ -66,15 +66,19 @@ export function useSocket() {
     });
 
     socket.on('draw:stroke', (stroke) => {
-      addStroke(stroke);
+      upsertStroke(stroke);
     });
 
     socket.on('draw:history', (strokes) => {
       setStrokes(strokes);
     });
 
-    socket.on('draw:undo', ({ strokeId }) => {
+    socket.on('draw:remove', ({ strokeId }) => {
       removeStroke(strokeId);
+    });
+
+    socket.on('draw:restore', (stroke) => {
+      upsertStroke(stroke);
     });
 
     return () => {
@@ -87,7 +91,8 @@ export function useSocket() {
       socket.off('game:state');
       socket.off('draw:stroke');
       socket.off('draw:history');
-      socket.off('draw:undo');
+      socket.off('draw:remove');
+      socket.off('draw:restore');
     };
   }, []);
 

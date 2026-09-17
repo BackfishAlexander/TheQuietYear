@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io';
-import { ClientEvents, ServerEvents, GameState, Stroke } from '@quiet-year/shared';
+import { ClientEvents, ServerEvents, GameState, normalizeStroke, normalizeStrokes } from '@quiet-year/shared';
 import * as roomManager from './roomManager.js';
 import * as gameManager from './gameManager.js';
 
@@ -44,6 +44,32 @@ function applyGameUpdate(io: Server, roomId: string, result: GameState | { error
   }
 }
 
+/** The socket's room, but only if the host currently lets this player draw. */
+function drawingRoom(socket: TypedSocket): roomManager.Room | undefined {
+  const { roomId, playerId } = (socket.data ?? {}) as { roomId?: string; playerId?: string };
+  if (!roomId || !playerId) return undefined;
+  const room = roomManager.getRoom(roomId);
+  if (!room) return undefined;
+  if (!roomManager.canPlayerDraw(room, playerId)) {
+    socket.emit('room:error', { message: 'Drawing is disabled for you by the host' });
+    return undefined;
+  }
+  return room;
+}
+
+/** The socket's room, but only if this socket belongs to the host. */
+function adminRoom(socket: TypedSocket): roomManager.Room | undefined {
+  const { roomId, playerId } = (socket.data ?? {}) as { roomId?: string; playerId?: string };
+  if (!roomId || !playerId) return undefined;
+  const room = roomManager.getRoom(roomId);
+  if (!room) return undefined;
+  if (!roomManager.isHost(room, playerId)) {
+    socket.emit('room:error', { message: 'Only the host can change drawing permissions' });
+    return undefined;
+  }
+  return room;
+}
+
 export function registerHandlers(io: Server, socket: TypedSocket) {
   // Room management
   socket.on('room:create', ({ playerName }) => {
@@ -65,6 +91,7 @@ export function registerHandlers(io: Server, socket: TypedSocket) {
     socket.data = { roomId: roomId.toUpperCase(), playerId };
     socket.emit('room:joined', { playerId });
     broadcastRoomState(io, roomId.toUpperCase());
+    socket.emit('draw:history', room.strokes);
   });
 
   // Game start
@@ -236,26 +263,82 @@ export function registerHandlers(io: Server, socket: TypedSocket) {
   });
 
   // Drawing
-  socket.on('draw:stroke', (stroke: Stroke) => {
-    const { roomId } = socket.data as { roomId: string; playerId: string };
-    const room = roomManager.getRoom(roomId);
+  socket.on('draw:stroke', (raw) => {
+    const room = drawingRoom(socket);
     if (!room) return;
-    room.strokes.push(stroke);
-    socket.to(roomId).emit('draw:stroke', stroke);
+    const { playerId } = socket.data as { playerId: string };
+
+    const stroke = normalizeStroke(raw, room.nextSeq);
+    if (!stroke) return;
+    // Trust the server's identity, not the sender's claim.
+    const placed = roomManager.appendStroke(room, { ...stroke, playerId });
+    // Echoed to everyone, sender included, so all clients agree on z-order.
+    io.to(room.state.roomId).emit('draw:stroke', placed);
   });
 
   socket.on('draw:undo', () => {
+    const room = drawingRoom(socket);
+    if (!room) return;
+    const { playerId } = socket.data as { playerId: string };
+    const removed = roomManager.undoStroke(room, playerId);
+    if (removed) {
+      io.to(room.state.roomId).emit('draw:remove', { playerId, strokeId: removed.id });
+    }
+  });
+
+  socket.on('draw:redo', () => {
+    const room = drawingRoom(socket);
+    if (!room) return;
+    const { playerId } = socket.data as { playerId: string };
+    const restored = roomManager.redoStroke(room, playerId);
+    if (restored) {
+      io.to(room.state.roomId).emit('draw:restore', restored);
+    }
+  });
+
+  socket.on('draw:clear', () => {
     const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
     const room = roomManager.getRoom(roomId);
     if (!room) return;
-    // Find and remove the last stroke by this player
-    for (let i = room.strokes.length - 1; i >= 0; i--) {
-      if (room.strokes[i].playerId === playerId) {
-        const removed = room.strokes.splice(i, 1)[0];
-        io.to(roomId).emit('draw:undo', { playerId, strokeId: removed.id });
-        break;
-      }
+    if (!roomManager.isHost(room, playerId)) {
+      socket.emit('room:error', { message: 'Only the host can clear the map' });
+      return;
     }
+    roomManager.clearStrokes(room);
+    io.to(roomId).emit('draw:history', []);
+  });
+
+  socket.on('draw:load', ({ strokes }) => {
+    const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
+    const room = roomManager.getRoom(roomId);
+    if (!room) return;
+    if (!roomManager.isHost(room, playerId)) {
+      socket.emit('room:error', { message: 'Only the host can load a map file' });
+      return;
+    }
+    const loaded = roomManager.replaceStrokes(room, normalizeStrokes(strokes));
+    io.to(roomId).emit('draw:history', loaded);
+  });
+
+  // Admin: who may draw
+  socket.on('admin:setDrawPermission', ({ playerId: targetId, canDraw }) => {
+    const room = adminRoom(socket);
+    if (!room) return;
+    if (!roomManager.setDrawPermission(room, targetId, canDraw)) return;
+    broadcastRoomState(io, room.state.roomId);
+    if (room.game) broadcastGameState(io, room.state.roomId);
+  });
+
+  socket.on('admin:setAllDrawPermissions', ({ canDraw }) => {
+    const room = adminRoom(socket);
+    if (!room) return;
+    const { playerId: hostId } = socket.data as { playerId: string };
+    for (const player of room.state.players) {
+      // The host keeps their own access so they can never lock themselves out.
+      if (player.id !== hostId) roomManager.setDrawPermission(room, player.id, canDraw);
+    }
+    broadcastRoomState(io, room.state.roomId);
+    if (room.game) broadcastGameState(io, room.state.roomId);
   });
 
   // Disconnect
@@ -269,12 +352,4 @@ export function registerHandlers(io: Server, socket: TypedSocket) {
     }
   });
 
-  // Send stroke history on connection to a room
-  socket.on('room:join', () => {
-    const { roomId } = socket.data as { roomId: string; playerId: string };
-    const room = roomManager.getRoom(roomId);
-    if (room && room.strokes.length > 0) {
-      socket.emit('draw:history', room.strokes);
-    }
-  });
 }
