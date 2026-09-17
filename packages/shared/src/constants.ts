@@ -83,3 +83,10 @@ export const ACTION_COLORS = {
 /** Green for a project that got finished, red for one that came to nothing. */
 export const PROJECT_COMPLETED_COLOR = '#2ecc71';
 export const PROJECT_FAILED_COLOR = '#e74c3c';
+
+/** Colours of the three resource-card lists, shared with the chronicle. */
+export const RESOURCE_COLORS: Record<'abundance' | 'scarcity' | 'name', string> = {
+  abundance: '#2ecc71',
+  scarcity: '#e74c3c',
+  name: '#3498db',
+};

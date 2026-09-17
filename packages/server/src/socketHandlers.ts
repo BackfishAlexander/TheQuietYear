@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io';
-import { ClientEvents, ServerEvents, GameState, normalizeStroke, normalizeStrokes } from '@quiet-year/shared';
+import { ClientEvents, ServerEvents, GameState, ResourceKind, normalizeStroke, normalizeStrokes } from '@quiet-year/shared';
 import * as roomManager from './roomManager.js';
 import * as gameManager from './gameManager.js';
 
@@ -68,6 +68,17 @@ function adminRoom(socket: TypedSocket): roomManager.Room | undefined {
     return undefined;
   }
   return room;
+}
+
+function changeResource(
+  io: Server, socket: TypedSocket,
+  kind: ResourceKind, op: 'add' | 'remove', value: string,
+) {
+  const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
+  const room = roomManager.getRoom(roomId);
+  if (!room?.game) return;
+  room.game = gameManager.handleResourceChange(room.game, playerId, kind, op, value);
+  broadcastGameState(io, roomId);
 }
 
 export function registerHandlers(io: Server, socket: TypedSocket) {
@@ -264,43 +275,27 @@ export function registerHandlers(io: Server, socket: TypedSocket) {
 
   // Resources
   socket.on('resource:addAbundance', ({ resource }) => {
-    const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
-    const room = roomManager.getRoom(roomId);
-    if (!room?.game) return;
-    room.game = gameManager.handleAddAbundance(room.game, playerId, resource);
-    broadcastGameState(io, roomId);
+    changeResource(io, socket, 'abundance', 'add', resource);
   });
 
   socket.on('resource:addScarcity', ({ resource }) => {
-    const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
-    const room = roomManager.getRoom(roomId);
-    if (!room?.game) return;
-    room.game = gameManager.handleAddScarcity(room.game, playerId, resource);
-    broadcastGameState(io, roomId);
+    changeResource(io, socket, 'scarcity', 'add', resource);
   });
 
   socket.on('resource:removeAbundance', ({ resource }) => {
-    const { roomId } = socket.data as { roomId: string; playerId: string };
-    const room = roomManager.getRoom(roomId);
-    if (!room?.game) return;
-    room.game = gameManager.handleRemoveAbundance(room.game, resource);
-    broadcastGameState(io, roomId);
+    changeResource(io, socket, 'abundance', 'remove', resource);
   });
 
   socket.on('resource:removeScarcity', ({ resource }) => {
-    const { roomId } = socket.data as { roomId: string; playerId: string };
-    const room = roomManager.getRoom(roomId);
-    if (!room?.game) return;
-    room.game = gameManager.handleRemoveScarcity(room.game, resource);
-    broadcastGameState(io, roomId);
+    changeResource(io, socket, 'scarcity', 'remove', resource);
   });
 
   socket.on('resource:addName', ({ name }) => {
-    const { roomId } = socket.data as { roomId: string; playerId: string };
-    const room = roomManager.getRoom(roomId);
-    if (!room?.game) return;
-    room.game = gameManager.handleAddName(room.game, name);
-    broadcastGameState(io, roomId);
+    changeResource(io, socket, 'name', 'add', name);
+  });
+
+  socket.on('resource:removeName', ({ name }) => {
+    changeResource(io, socket, 'name', 'remove', name);
   });
 
   // Drawing

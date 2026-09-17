@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import type { ClientEvents, ServerEvents } from '@quiet-year/shared';
+import { RESOURCE_COLORS } from '@quiet-year/shared';
 import { useGameStore } from '../../store/gameStore';
 
 type TypedSocket = Socket<ServerEvents, ClientEvents>;
@@ -43,7 +44,7 @@ export function ResourceCard({ socket }: { socket: TypedSocket }) {
 
       {/* Abundances */}
       <div style={{ marginBottom: 8 }}>
-        <div style={{ fontWeight: 600, color: '#2ecc71', marginBottom: 4, fontSize: 12 }}>
+        <div style={{ fontWeight: 600, color: RESOURCE_COLORS.abundance, marginBottom: 4, fontSize: 12 }}>
           Abundances
         </div>
         {gameState.abundances.map((a, i) => (
@@ -71,7 +72,7 @@ export function ResourceCard({ socket }: { socket: TypedSocket }) {
 
       {/* Scarcities */}
       <div style={{ marginBottom: 8 }}>
-        <div style={{ fontWeight: 600, color: '#e74c3c', marginBottom: 4, fontSize: 12 }}>
+        <div style={{ fontWeight: 600, color: RESOURCE_COLORS.scarcity, marginBottom: 4, fontSize: 12 }}>
           Scarcities
         </div>
         {gameState.scarcities.map((s, i) => (
@@ -99,11 +100,19 @@ export function ResourceCard({ socket }: { socket: TypedSocket }) {
 
       {/* Names */}
       <div>
-        <div style={{ fontWeight: 600, color: '#3498db', marginBottom: 4, fontSize: 12 }}>
+        <div style={{ fontWeight: 600, color: RESOURCE_COLORS.name, marginBottom: 4, fontSize: 12 }}>
           Names
         </div>
         {gameState.names.map((n, i) => (
-          <div key={i} style={{ padding: '2px 0' }}>{n}</div>
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0' }}>
+            <span>{n}</span>
+            <button
+              onClick={() => socket.emit('resource:removeName', { name: n })}
+              style={removeBtn}
+            >
+              x
+            </button>
+          </div>
         ))}
         <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
           <input

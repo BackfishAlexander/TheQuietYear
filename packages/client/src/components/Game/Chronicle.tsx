@@ -4,9 +4,10 @@
  * discussion carries every response it drew. Both the sidebar log and the
  * end-of-game summary render entries through here, on light or dark paper.
  */
-import type { GameEvent, GameEventType } from '@quiet-year/shared';
+import type { GameEvent, GameEventType, ResourceKind } from '@quiet-year/shared';
 import {
-  ACTION_COLORS, PROJECT_COMPLETED_COLOR, PROJECT_FAILED_COLOR, SEASON_COLORS,
+  ACTION_COLORS, PROJECT_COMPLETED_COLOR, PROJECT_FAILED_COLOR,
+  RESOURCE_COLORS, SEASON_COLORS,
 } from '@quiet-year/shared';
 import { Icon, type IconName } from './ToolIcons';
 
@@ -34,7 +35,8 @@ const ENTRY_STYLES: Record<GameEventType, EntryStyle> = {
   'project-changed': { icon: 'clock', color: '#8B6914', label: 'Project changed' },
   'contempt-taken': { icon: { glyph: '●' }, color: '#7f1d1d', label: 'Took a contempt token' },
   'contempt-discarded': { icon: { glyph: '○' }, color: '#a16207', label: 'Spent a contempt token' },
-  'resource-added': { icon: { glyph: '◆' }, color: '#4a7c59', label: 'Resources changed' },
+  'resource-added': { icon: { glyph: '◆' }, color: '#4a7c59', label: 'Added to the card' },
+  'resource-removed': { icon: { glyph: '◇' }, color: '#4a7c59', label: 'Struck from the card' },
   'game-over': { icon: { glyph: '❄' }, color: '#3498db', label: 'The Frost Shepherds' },
 };
 
@@ -63,9 +65,12 @@ export function ChronicleEntry({ event, theme = 'light' }: {
 }) {
   const style = ENTRY_STYLES[event.type];
   const pal = PALETTES[theme];
+  const kind = resourceKind(event);
   const accent = event.type === 'card'
     ? SEASON_COLORS[event.season] ?? style.color
-    : style.color;
+    : kind
+      ? RESOURCE_COLORS[kind]
+      : style.color;
 
   return (
     <div style={{
@@ -106,10 +111,27 @@ function EntryBadge({ style, event, color }: { style: EntryStyle; event: GameEve
   return <span style={{ color, display: 'flex' }}><Icon name={style.icon as IconName} size={12} /></span>;
 }
 
+const RESOURCE_LABELS: Record<ResourceKind, string> = {
+  abundance: 'Abundance',
+  scarcity: 'Scarcity',
+  name: 'Name',
+};
+
+/** Which resource list an entry touched, if it touched one at all. */
+function resourceKind(event: GameEvent): ResourceKind | null {
+  if (event.type !== 'resource-added' && event.type !== 'resource-removed') return null;
+  const kind = event.detail;
+  return kind === 'abundance' || kind === 'scarcity' || kind === 'name' ? kind : null;
+}
+
 function headline(event: GameEvent, style: EntryStyle): string {
   if (event.type === 'card' && event.card) {
     const { rank, suit, choice } = event.card;
     return `${rank} of ${suit}${choice ? ` · option ${choice}` : ''}`;
+  }
+  const kind = resourceKind(event);
+  if (kind) {
+    return `${RESOURCE_LABELS[kind]} ${event.type === 'resource-added' ? 'added' : 'removed'}`;
   }
   return style.label;
 }

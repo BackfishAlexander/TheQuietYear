@@ -80,7 +80,11 @@ export type GameEventType =
   | 'contempt-taken'
   | 'contempt-discarded'
   | 'resource-added'
+  | 'resource-removed'
   | 'game-over';
+
+/** The three lists on the resource card. */
+export type ResourceKind = 'abundance' | 'scarcity' | 'name';
 
 /** The card a turn was built around, filled in as the turn progresses. */
 export interface CardEventDetail {
@@ -257,6 +261,7 @@ export interface ClientEvents {
   'resource:removeAbundance': (data: { resource: string }) => void;
   'resource:removeScarcity': (data: { resource: string }) => void;
   'resource:addName': (data: { name: string }) => void;
+  'resource:removeName': (data: { name: string }) => void;
   'draw:stroke': (data: Stroke) => void;
   'draw:undo': () => void;
   'draw:redo': () => void;

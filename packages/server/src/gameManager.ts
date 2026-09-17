@@ -1,5 +1,5 @@
 import {
-  GameState, GameEvent, Player, Project, ProjectStatus, Discussion, SetupState,
+  GameState, GameEvent, Player, Project, ProjectStatus, ResourceKind, Discussion, SetupState,
   buildDeck, drawCard, tickProjects, advanceTurn, isGameOver, generateId,
   MIN_PROJECT_WEEKS, MAX_PROJECT_WEEKS,
 } from '@quiet-year/shared';
@@ -399,26 +399,41 @@ export function handleContempt(state: GameState, playerId: string, action: 'take
   return addEvent(newState, playerId, type, (reason ?? '').trim());
 }
 
-export function handleAddAbundance(state: GameState, playerId: string, resource: string): GameState {
-  let newState = { ...state, abundances: [...state.abundances, resource] };
-  return addEvent(newState, playerId, 'resource-added', `Added abundance: ${resource}`);
-}
+/** Which field of the game state each resource list lives in. */
+const RESOURCE_FIELDS: Record<ResourceKind, 'abundances' | 'scarcities' | 'names'> = {
+  abundance: 'abundances',
+  scarcity: 'scarcities',
+  name: 'names',
+};
 
-export function handleAddScarcity(state: GameState, playerId: string, resource: string): GameState {
-  let newState = { ...state, scarcities: [...state.scarcities, resource] };
-  return addEvent(newState, playerId, 'resource-added', `Added scarcity: ${resource}`);
-}
+/**
+ * Add to or take from one of the resource-card lists. Cards give and take
+ * these away constantly, so every change in either direction goes into the
+ * chronicle - a scarcity that quietly vanished is as much a part of the year
+ * as one that arrived.
+ */
+export function handleResourceChange(
+  state: GameState, playerId: string,
+  kind: ResourceKind, op: 'add' | 'remove', value: string,
+): GameState {
+  const field = RESOURCE_FIELDS[kind];
+  const current = state[field];
+  const text = value.trim();
+  if (!text) return state;
 
-export function handleRemoveAbundance(state: GameState, resource: string): GameState {
-  return { ...state, abundances: state.abundances.filter(a => a !== resource) };
-}
+  const next = op === 'add'
+    ? [...current, text]
+    : current.filter(v => v !== text);
 
-export function handleRemoveScarcity(state: GameState, resource: string): GameState {
-  return { ...state, scarcities: state.scarcities.filter(s => s !== resource) };
-}
+  // Nothing was there to take away, so there is nothing to record either.
+  if (next.length === current.length && op === 'remove') return state;
 
-export function handleAddName(state: GameState, name: string): GameState {
-  return { ...state, names: [...state.names, name] };
+  const newState: GameState = { ...state, [field]: next };
+  return addEvent(
+    newState, playerId,
+    op === 'add' ? 'resource-added' : 'resource-removed',
+    text, { detail: kind },
+  );
 }
 
 /**
