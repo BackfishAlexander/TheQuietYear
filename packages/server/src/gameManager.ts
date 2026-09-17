@@ -334,32 +334,34 @@ export function handleStartProject(
 export function handleEndTurn(state: GameState, playerId: string): GameState | { error: string } {
   if (state.turnOrder[state.activePlayerIndex] !== playerId) return { error: 'Not your turn' };
   if (state.turnPhase !== 'turn-complete') return { error: 'Turn not complete yet' };
+  if (state.pendingResolutions.length > 0) return { error: 'Resolve the finished project first' };
 
-  let newState = tickProjects(state);
-
-  // Any project whose last die just came off needs a word on how it went, and
-  // the player who ran the week out is the one to give it.
-  const justFinished = newState.projects.filter(
+  const ticked = tickProjects(state);
+  const justFinished = ticked.projects.filter(
     p => p.completed && !state.projects.find(op => op.id === p.id)?.completed,
   );
+
+  // The dice come off as the week rolls over, not during anyone's turn, so the
+  // player taking up the new week is the one who says how those projects went.
+  let newState = advanceTurn(ticked);
+  if (justFinished.length === 0) return newState;
+
+  const nextPlayerId = newState.turnOrder[newState.activePlayerIndex];
   for (const p of justFinished) {
-    newState = addEvent(newState, playerId, 'project-completed', p.name, { projectId: p.id });
+    newState = addEvent(newState, nextPlayerId, 'project-completed', p.name, { projectId: p.id });
   }
 
-  if (justFinished.length > 0) {
-    return {
-      ...newState,
-      pendingResolutions: [...newState.pendingResolutions, ...justFinished.map(p => p.id)],
-      turnPhase: 'resolve-project',
-    };
-  }
-
-  return advanceTurn(newState);
+  return {
+    ...newState,
+    pendingResolutions: [...newState.pendingResolutions, ...justFinished.map(p => p.id)],
+    turnPhase: 'resolve-project',
+  };
 }
 
 /**
- * Record how a resolved project turned out. Hanging resolutions block the end
- * of the turn, so clearing the last one is what finally passes the week on.
+ * Record how a resolved project turned out. A project the dice ran out on is
+ * resolved at the top of the new turn, so clearing the last one is what lets
+ * the incoming player get on with drawing their card.
  */
 export function handleResolveProject(
   state: GameState, playerId: string, projectId: string, resolution: string,
@@ -382,11 +384,7 @@ export function handleResolveProject(
     );
   }
 
-  // Everything resolved, so the turn that was waiting on them can now end.
-  if (newState.pendingResolutions.length === 0 && newState.turnPhase === 'resolve-project') {
-    return advanceTurn(newState);
-  }
-  return newState;
+  return openTurnIfResolved(newState);
 }
 
 export function handleContempt(state: GameState, playerId: string, action: 'take' | 'discard', reason?: string): GameState {
@@ -456,7 +454,7 @@ export function handleProjectSetDice(
   const text = wasResolved
     ? `back in progress with ${dice} ${dice === 1 ? 'die' : 'dice'}`
     : `now at ${dice} ${dice === 1 ? 'die' : 'dice'}`;
-  return maybeAdvanceAfterResolution(
+  return openTurnIfResolved(
     addEvent(newState, playerId, 'project-changed', project.name, { detail: text, projectId }),
   );
 }
@@ -519,7 +517,7 @@ export function handleProjectRemove(
     projects: state.projects.filter(p => p.id !== projectId),
     pendingResolutions: state.pendingResolutions.filter(id => id !== projectId),
   };
-  return maybeAdvanceAfterResolution(
+  return openTurnIfResolved(
     addEvent(newState, playerId, 'project-changed', project.name, {
       detail: 'abandoned and struck from the map',
       projectId,
@@ -528,12 +526,12 @@ export function handleProjectRemove(
 }
 
 /**
- * A turn held open only for resolutions can end once the last one goes away,
- * whether it was narrated, reactivated or removed.
+ * A turn that opened on a resolution can get under way once the last one is
+ * dealt with, whether it was narrated, reactivated or removed.
  */
-function maybeAdvanceAfterResolution(state: GameState): GameState {
+function openTurnIfResolved(state: GameState): GameState {
   if (state.turnPhase === 'resolve-project' && state.pendingResolutions.length === 0) {
-    return advanceTurn(state);
+    return { ...state, turnPhase: 'draw-card' };
   }
   return state;
 }

@@ -28,6 +28,9 @@ export function ProjectResolution({ socket }: { socket: TypedSocket }) {
   const accent = project.failed ? PROJECT_FAILED_COLOR : PROJECT_COMPLETED_COLOR;
   const verb = project.failed ? 'failed' : 'is finished';
   const remaining = gameState.pendingResolutions.length;
+  // A project the dice ran out on lands as the new week opens, so it falls to
+  // whoever is taking up the turn rather than whoever ended the last one.
+  const fromTickDown = gameState.turnPhase === 'resolve-project';
 
   const submit = () => {
     socket.emit('turn:resolveProject', { projectId, resolution: text.trim() });
@@ -52,6 +55,12 @@ export function ProjectResolution({ socket }: { socket: TypedSocket }) {
             {project.name} {verb}
           </h3>
         </div>
+
+        {fromTickDown && (
+          <p style={{ fontSize: 12, color: '#b0a795', marginBottom: 8 }}>
+            Its last die came off as the week rolled over into your turn.
+          </p>
+        )}
 
         {project.description && (
           <p style={{ fontSize: 13, color: '#8a8378', fontStyle: 'italic', marginBottom: 14 }}>
