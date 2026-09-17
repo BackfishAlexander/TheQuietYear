@@ -32,7 +32,12 @@ export interface Project {
   createdBy: string;
   completed: boolean;
   failed: boolean;
+  /** How the project turned out, narrated when it resolved. */
+  resolution: string | null;
 }
+
+/** The three states a project can be put into from the project tab. */
+export type ProjectStatus = 'active' | 'completed' | 'failed';
 
 export type GamePhase = 'lobby' | 'setup-terrain' | 'setup-resources' | 'playing' | 'discussion' | 'game-over';
 
@@ -44,23 +49,78 @@ export type TurnPhase =
   | 'action-discover'
   | 'action-discuss'
   | 'action-project'
+  | 'resolve-project'
   | 'turn-complete';
+
+export interface DiscussionResponse {
+  playerId: string;
+  playerName: string;
+  text: string;
+}
 
 export interface Discussion {
   topic: string;
   initiatedBy: string;
-  responses: { playerId: string; playerName: string; text: string }[];
+  responses: DiscussionResponse[];
+  /**
+   * Who still owes an answer, in the order they weigh in: around the table
+   * from the initiator's left, with the initiator themselves last.
+   */
   expectedResponders: string[];
 }
 
+export type GameEventType =
+  | 'card'
+  | 'discovery'
+  | 'discussion'
+  | 'project-started'
+  | 'project-completed'
+  | 'project-failed'
+  | 'project-changed'
+  | 'contempt-taken'
+  | 'contempt-discarded'
+  | 'resource-added'
+  | 'game-over';
+
+/** The card a turn was built around, filled in as the turn progresses. */
+export interface CardEventDetail {
+  rank: Rank;
+  suit: Suit;
+  season: Season;
+  /** Null until the active player picks a prompt. */
+  choice: 'A' | 'B' | null;
+  promptText: string | null;
+  specialRules: string | null;
+}
+
+/** A whole discussion, so the chronicle keeps the question with its answers. */
+export interface DiscussionEventDetail {
+  topic: string;
+  initiatedBy: string;
+  responses: DiscussionResponse[];
+  complete: boolean;
+}
+
+/**
+ * One entry in the chronicle. A single event carries everything that belongs
+ * together - a card with the prompt chosen and the answer given, a discussion
+ * with every response - so the log can render it as one grouped block rather
+ * than as loose lines the reader has to stitch back together.
+ */
 export interface GameEvent {
   id: string;
   week: number;
   season: Season;
   playerId: string;
   playerName: string;
-  type: 'card-drawn' | 'prompt-chosen' | 'discovery' | 'discussion' | 'project-started' | 'project-completed' | 'project-failed' | 'contempt-taken' | 'contempt-discarded' | 'resource-added' | 'game-over';
+  type: GameEventType;
+  /** The headline content: the narration, the topic, the project name. */
   text: string;
+  /** Secondary line: a project's description, then its resolution. */
+  detail?: string;
+  card?: CardEventDetail;
+  discussion?: DiscussionEventDetail;
+  projectId?: string;
   timestamp: number;
 }
 
@@ -91,6 +151,11 @@ export interface GameState {
   events: GameEvent[];
   setup: SetupState;
   skipDiceReduction: boolean;
+  /**
+   * Projects that have just resolved and still want a few words on how they
+   * turned out. The active player is prompted for each in turn.
+   */
+  pendingResolutions: string[];
 }
 
 export interface RoomState {
@@ -179,7 +244,12 @@ export interface ClientEvents {
   'turn:startProject': (data: { name: string; description: string; duration: number; position: { x: number; y: number } }) => void;
   'turn:startDiscussion': (data: { topic: string }) => void;
   'turn:endTurn': () => void;
+  'turn:resolveProject': (data: { projectId: string; resolution: string }) => void;
   'discussion:respond': (data: { text: string }) => void;
+  'discussion:skipResponder': () => void;
+  'project:setDice': (data: { projectId: string; weeksRemaining: number }) => void;
+  'project:setStatus': (data: { projectId: string; status: ProjectStatus }) => void;
+  'project:remove': (data: { projectId: string }) => void;
   'contempt:take': () => void;
   'contempt:discard': (data: { reason: string }) => void;
   'resource:addAbundance': (data: { resource: string }) => void;

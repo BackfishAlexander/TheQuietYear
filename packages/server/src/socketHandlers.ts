@@ -197,6 +197,47 @@ export function registerHandlers(io: Server, socket: TypedSocket) {
     applyGameUpdate(io, roomId, gameManager.handleStartProject(room.game, playerId, name, description, duration, position), socket);
   });
 
+  socket.on('turn:resolveProject', ({ projectId, resolution }) => {
+    const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
+    const room = roomManager.getRoom(roomId);
+    if (!room?.game) return;
+    applyGameUpdate(io, roomId, gameManager.handleResolveProject(room.game, playerId, projectId, resolution), socket);
+  });
+
+  socket.on('discussion:skipResponder', () => {
+    const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
+    const room = roomManager.getRoom(roomId);
+    if (!room?.game) return;
+    if (!roomManager.isHost(room, playerId)) {
+      socket.emit('room:error', { message: 'Only the host can skip a responder' });
+      return;
+    }
+    applyGameUpdate(io, roomId, gameManager.handleSkipResponder(room.game), socket);
+  });
+
+  // Projects are freely editable: cards hand out dice, take them away, and
+  // sometimes destroy a project outright.
+  socket.on('project:setDice', ({ projectId, weeksRemaining }) => {
+    const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
+    const room = roomManager.getRoom(roomId);
+    if (!room?.game) return;
+    applyGameUpdate(io, roomId, gameManager.handleProjectSetDice(room.game, playerId, projectId, weeksRemaining), socket);
+  });
+
+  socket.on('project:setStatus', ({ projectId, status }) => {
+    const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
+    const room = roomManager.getRoom(roomId);
+    if (!room?.game) return;
+    applyGameUpdate(io, roomId, gameManager.handleProjectSetStatus(room.game, playerId, projectId, status), socket);
+  });
+
+  socket.on('project:remove', ({ projectId }) => {
+    const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
+    const room = roomManager.getRoom(roomId);
+    if (!room?.game) return;
+    applyGameUpdate(io, roomId, gameManager.handleProjectRemove(room.game, playerId, projectId), socket);
+  });
+
   socket.on('turn:endTurn', () => {
     const { roomId, playerId } = socket.data as { roomId: string; playerId: string };
     const room = roomManager.getRoom(roomId);

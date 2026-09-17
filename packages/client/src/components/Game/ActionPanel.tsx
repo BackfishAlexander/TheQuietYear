@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import type { ClientEvents, ServerEvents } from '@quiet-year/shared';
-import { SEASON_COLORS } from '@quiet-year/shared';
+import { SEASON_COLORS, ACTION_COLORS } from '@quiet-year/shared';
 import { useGameStore } from '../../store/gameStore';
+import { Icon, type IconName } from './ToolIcons';
 
 type TypedSocket = Socket<ServerEvents, ClientEvents>;
 
@@ -139,24 +140,24 @@ export function ActionPanel({ socket }: { socket: TypedSocket }) {
             <label style={labelStyle}>Choose your action</label>
             <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
               <ActionButton
-                icon={'\u2605'}
+                icon="discover"
                 label="Discover"
                 desc="Something new"
-                color="#e67e22"
+                color={ACTION_COLORS.discover}
                 onClick={() => socket.emit('turn:action', { action: 'discover' })}
               />
               <ActionButton
-                icon={'\u2709'}
+                icon="discuss"
                 label="Discuss"
                 desc="Hold a discussion"
-                color="#3498db"
+                color={ACTION_COLORS.discuss}
                 onClick={() => socket.emit('turn:action', { action: 'discuss' })}
               />
               <ActionButton
-                icon={'\u2692'}
+                icon="project"
                 label="Project"
                 desc="Start building"
-                color="#2ecc71"
+                color={ACTION_COLORS.project}
                 onClick={() => socket.emit('turn:action', { action: 'project' })}
               />
             </div>
@@ -167,7 +168,9 @@ export function ActionPanel({ socket }: { socket: TypedSocket }) {
         {tp === 'action-discover' && (
           <div style={{ padding: '4px 0' }}>
             <label style={labelStyle}>
-              <span style={{ color: '#e67e22', marginRight: 6 }}>{'\u2605'}</span>
+              <span style={{ color: ACTION_COLORS.discover, marginRight: 6, display: 'flex' }}>
+                <Icon name="discover" size={13} />
+              </span>
               Discover Something New
             </label>
             <p style={{ fontSize: 12, color: '#999', margin: '4px 0 8px' }}>
@@ -187,7 +190,7 @@ export function ActionPanel({ socket }: { socket: TypedSocket }) {
                 disabled={!discoverText.trim()}
                 style={{
                   ...primaryBtn,
-                  background: discoverText.trim() ? '#e67e22' : '#ddd',
+                  background: discoverText.trim() ? ACTION_COLORS.discover : '#ddd',
                   fontSize: 13, padding: '8px 20px',
                 }}
               >
@@ -201,7 +204,9 @@ export function ActionPanel({ socket }: { socket: TypedSocket }) {
         {tp === 'action-discuss' && (
           <div style={{ padding: '4px 0' }}>
             <label style={labelStyle}>
-              <span style={{ color: '#3498db', marginRight: 6 }}>{'\u2709'}</span>
+              <span style={{ color: ACTION_COLORS.discuss, marginRight: 6, display: 'flex' }}>
+                <Icon name="discuss" size={13} />
+              </span>
               Hold a Discussion
             </label>
             <p style={{ fontSize: 12, color: '#999', margin: '4px 0 8px' }}>
@@ -221,7 +226,7 @@ export function ActionPanel({ socket }: { socket: TypedSocket }) {
                 disabled={!discussTopic.trim()}
                 style={{
                   ...primaryBtn,
-                  background: discussTopic.trim() ? '#3498db' : '#ddd',
+                  background: discussTopic.trim() ? ACTION_COLORS.discuss : '#ddd',
                   fontSize: 13, padding: '8px 20px',
                 }}
               >
@@ -235,7 +240,9 @@ export function ActionPanel({ socket }: { socket: TypedSocket }) {
         {tp === 'action-project' && (
           <div style={{ padding: '4px 0' }}>
             <label style={labelStyle}>
-              <span style={{ color: '#2ecc71', marginRight: 6 }}>{'\u2692'}</span>
+              <span style={{ color: ACTION_COLORS.project, marginRight: 6, display: 'flex' }}>
+                <Icon name="project" size={13} />
+              </span>
               Start a Project
             </label>
             <p style={{ fontSize: 12, color: '#999', margin: '4px 0 8px' }}>
@@ -280,7 +287,7 @@ export function ActionPanel({ socket }: { socket: TypedSocket }) {
                 disabled={!projectName.trim()}
                 style={{
                   ...primaryBtn,
-                  background: projectName.trim() ? '#2ecc71' : '#ddd',
+                  background: projectName.trim() ? ACTION_COLORS.project : '#ddd',
                   fontSize: 13, padding: '8px 20px',
                 }}
               >
@@ -311,7 +318,7 @@ export function ActionPanel({ socket }: { socket: TypedSocket }) {
 }
 
 function ActionButton({ icon, label, desc, color, onClick }: {
-  icon: string; label: string; desc: string; color: string; onClick: () => void;
+  icon: IconName; label: string; desc: string; color: string; onClick: () => void;
 }) {
   return (
     <button
@@ -340,7 +347,7 @@ function ActionButton({ icon, label, desc, color, onClick }: {
         e.currentTarget.style.boxShadow = 'none';
       }}
     >
-      <span style={{ fontSize: 20, color }}>{icon}</span>
+      <span style={{ color, display: 'flex' }}><Icon name={icon} size={22} /></span>
       <span style={{ fontSize: 14, fontWeight: 600, color: '#2c2c2c' }}>{label}</span>
       <span style={{ fontSize: 11, color: '#aaa' }}>{desc}</span>
     </button>

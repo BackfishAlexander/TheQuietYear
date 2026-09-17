@@ -32,7 +32,11 @@ export function ResourceCard({ socket }: { socket: TypedSocket }) {
   };
 
   return (
-    <div style={{ padding: 12, borderBottom: '1px solid #e0d8c8', fontSize: 13 }}>
+    // Capped so a long resource list can never crowd out the tabs below it.
+    <div style={{
+      padding: 12, borderBottom: '1px solid #e0d8c8', fontSize: 13,
+      flexShrink: 0, maxHeight: '40%', overflow: 'auto',
+    }}>
       <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#888' }}>
         Resources
       </h3>

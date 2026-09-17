@@ -65,3 +65,21 @@ export const PALETTE: string[] = [
 export const HIGHLIGHTER_OPACITY = 0.35;
 /** The eraser feels right a good deal wider than its nominal width. */
 export const ERASER_WIDTH_MULTIPLIER = 3;
+
+// ---------------------------------------------------------------------------
+// The three turn actions
+// ---------------------------------------------------------------------------
+
+/**
+ * Colour and wording for the three actions a player may take. Shared so the
+ * action panel, the chronicle and the sidebar tabs all speak with one voice.
+ */
+export const ACTION_COLORS = {
+  discover: '#e67e22',
+  discuss: '#3498db',
+  project: '#2ecc71',
+} as const;
+
+/** Green for a project that got finished, red for one that came to nothing. */
+export const PROJECT_COMPLETED_COLOR = '#2ecc71';
+export const PROJECT_FAILED_COLOR = '#e74c3c';

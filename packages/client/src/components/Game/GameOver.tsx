@@ -1,5 +1,5 @@
 import { useGameStore } from '../../store/gameStore';
-import { SEASON_COLORS } from '@quiet-year/shared';
+import { ChronicleEntry } from './Chronicle';
 
 export function GameOver() {
   const { gameState } = useGameStore();
@@ -89,18 +89,11 @@ export function GameOver() {
             Chronicle of the Year
           </h3>
           <div style={{
-            maxHeight: 300, overflow: 'auto', padding: '12px 16px',
+            maxHeight: 360, overflow: 'auto', padding: '12px 14px',
             background: 'rgba(255,255,255,0.05)', borderRadius: 8,
           }}>
             {gameState.events.map(event => (
-              <div key={event.id} style={{ marginBottom: 6, fontSize: 12 }}>
-                <span style={{ color: SEASON_COLORS[event.season], marginRight: 6 }}>
-                  Week {event.week}
-                </span>
-                <span style={{ color: '#888' }}>
-                  {event.playerName}: {event.text}
-                </span>
-              </div>
+              <ChronicleEntry key={event.id} event={event} theme="dark" />
             ))}
           </div>
         </div>

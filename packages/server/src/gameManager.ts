@@ -1,6 +1,7 @@
 import {
-  GameState, GameEvent, Player, Project, Discussion, SetupState,
+  GameState, GameEvent, Player, Project, ProjectStatus, Discussion, SetupState,
   buildDeck, drawCard, tickProjects, advanceTurn, isGameOver, generateId,
+  MIN_PROJECT_WEEKS, MAX_PROJECT_WEEKS,
 } from '@quiet-year/shared';
 
 export function createInitialGameState(roomId: string, players: Player[]): GameState {
@@ -31,10 +32,14 @@ export function createInitialGameState(roomId: string, players: Player[]): GameS
       currentDeclarerIndex: 0,
     },
     skipDiceReduction: false,
+    pendingResolutions: [],
   };
 }
 
-function addEvent(state: GameState, playerId: string, type: GameEvent['type'], text: string): GameState {
+function addEvent(
+  state: GameState, playerId: string, type: GameEvent['type'], text: string,
+  extra: Partial<GameEvent> = {},
+): GameState {
   const player = state.players.find(p => p.id === playerId);
   const event: GameEvent = {
     id: generateId(),
@@ -45,8 +50,28 @@ function addEvent(state: GameState, playerId: string, type: GameEvent['type'], t
     type,
     text,
     timestamp: Date.now(),
+    ...extra,
   };
   return { ...state, events: [...state.events, event] };
+}
+
+/**
+ * Fold new information into the most recent matching event instead of
+ * appending a fresh line. This is what keeps a turn's card, the prompt chosen
+ * from it and the answer given as a single entry in the chronicle.
+ */
+function amendLastEvent(
+  state: GameState,
+  match: (e: GameEvent) => boolean,
+  patch: (e: GameEvent) => GameEvent,
+): GameState {
+  for (let i = state.events.length - 1; i >= 0; i--) {
+    if (!match(state.events[i])) continue;
+    const events = [...state.events];
+    events[i] = patch(events[i]);
+    return { ...state, events };
+  }
+  return state;
 }
 
 export function finishTerrain(state: GameState): GameState {
@@ -129,7 +154,16 @@ export function handleDrawCard(state: GameState, playerId: string): GameState | 
     turnPhase: card.promptB ? 'resolve-card' as const : 'resolve-card' as const,
   };
 
-  return addEvent(newState, playerId, 'card-drawn', `Drew the ${card.rank} of ${card.suit} (${card.season})`);
+  return addEvent(newState, playerId, 'card', '', {
+    card: {
+      rank: card.rank,
+      suit: card.suit,
+      season: card.season,
+      choice: null,
+      promptText: null,
+      specialRules: card.specialRules,
+    },
+  });
 }
 
 export function handleChoosePrompt(state: GameState, playerId: string, choice: 'A' | 'B'): GameState | { error: string } {
@@ -148,21 +182,27 @@ export function handleChoosePrompt(state: GameState, playerId: string, choice: '
     newState.skipDiceReduction = true;
   }
 
-  newState = addEvent(newState, playerId, 'prompt-chosen',
-    `Chose option ${choice}: "${choice === 'A' ? card.promptA : card.promptB}"`);
-
-  return newState;
+  const promptText = choice === 'A' ? card.promptA : card.promptB;
+  return amendLastEvent(
+    newState,
+    e => e.type === 'card' && e.card?.choice === null,
+    e => ({ ...e, card: { ...e.card!, choice, promptText } }),
+  );
 }
 
 export function handleNarrate(state: GameState, playerId: string, text: string): GameState | { error: string } {
   if (state.turnOrder[state.activePlayerIndex] !== playerId) return { error: 'Not your turn' };
   if (state.turnPhase !== 'narrate-card') return { error: 'Not time to narrate' };
 
-  let newState = { ...state, turnPhase: 'choose-action' as const };
-  if (text.trim()) {
-    newState = addEvent(newState, playerId, 'prompt-chosen', text.trim());
-  }
-  return newState;
+  const newState = { ...state, turnPhase: 'choose-action' as const };
+  const answer = text.trim();
+  if (!answer) return newState;
+
+  return amendLastEvent(
+    newState,
+    e => e.type === 'card' && e.playerId === playerId,
+    e => ({ ...e, text: answer }),
+  );
 }
 
 export function handleAction(state: GameState, playerId: string, action: 'discover' | 'discuss' | 'project'): GameState | { error: string } {
@@ -182,52 +222,82 @@ export function handleDiscover(state: GameState, playerId: string, description: 
   if (state.turnOrder[state.activePlayerIndex] !== playerId) return { error: 'Not your turn' };
   if (state.turnPhase !== 'action-discover') return { error: 'Not in discover phase' };
 
-  let newState = { ...state, turnPhase: 'turn-complete' as const };
-  return addEvent(newState, playerId, 'discovery', description);
+  const newState = { ...state, turnPhase: 'turn-complete' as const };
+  return addEvent(newState, playerId, 'discovery', description.trim());
+}
+
+/**
+ * Everyone weighs in going around the table from the initiator's left, and
+ * the one who raised the topic has the last word - so they come last in the
+ * order rather than being skipped.
+ */
+function respondOrder(turnOrder: string[], initiatedBy: string): string[] {
+  const start = turnOrder.indexOf(initiatedBy);
+  const order: string[] = [];
+  for (let i = 1; i < turnOrder.length; i++) {
+    order.push(turnOrder[(start + i) % turnOrder.length]);
+  }
+  order.push(initiatedBy);
+  return order;
 }
 
 export function handleStartDiscussion(state: GameState, playerId: string, topic: string): GameState | { error: string } {
   if (state.turnOrder[state.activePlayerIndex] !== playerId) return { error: 'Not your turn' };
   if (state.turnPhase !== 'action-discuss') return { error: 'Not in discuss phase' };
 
-  const otherPlayers = state.turnOrder.filter(id => id !== playerId);
   const discussion: Discussion = {
     topic,
     initiatedBy: playerId,
     responses: [],
-    expectedResponders: otherPlayers,
+    expectedResponders: respondOrder(state.turnOrder, playerId),
   };
 
-  let newState = { ...state, discussion, phase: 'discussion' as const };
-  return addEvent(newState, playerId, 'discussion', `Started discussion: "${topic}"`);
+  const newState = { ...state, discussion, phase: 'discussion' as const };
+  return addEvent(newState, playerId, 'discussion', topic, {
+    discussion: { topic, initiatedBy: playerId, responses: [], complete: false },
+  });
 }
 
 export function handleDiscussionResponse(state: GameState, playerId: string, text: string): GameState | { error: string } {
   if (!state.discussion) return { error: 'No active discussion' };
   if (!state.discussion.expectedResponders.includes(playerId)) return { error: 'Not expected to respond' };
-
-  const player = state.players.find(p => p.id === playerId);
-  const responses = [...state.discussion.responses, {
-    playerId,
-    playerName: player?.name ?? 'Unknown',
-    text,
-  }];
-  const expectedResponders = state.discussion.expectedResponders.filter(id => id !== playerId);
-
-  if (expectedResponders.length === 0) {
-    // Discussion complete
-    return {
-      ...state,
-      discussion: { ...state.discussion, responses, expectedResponders: [] },
-      phase: 'playing',
-      turnPhase: 'turn-complete',
-    };
+  if (state.discussion.expectedResponders[0] !== playerId) {
+    return { error: 'Wait your turn to weigh in' };
   }
 
-  return {
+  const player = state.players.find(p => p.id === playerId);
+  const response = { playerId, playerName: player?.name ?? 'Unknown', text: text.trim() };
+  return advanceDiscussion(state, response);
+}
+
+/** Let the table move past someone who has dropped out mid-discussion. */
+export function handleSkipResponder(state: GameState): GameState | { error: string } {
+  if (!state.discussion) return { error: 'No active discussion' };
+  if (state.discussion.expectedResponders.length === 0) return { error: 'Nobody left to skip' };
+  return advanceDiscussion(state, null);
+}
+
+/**
+ * Record (or pass over) the current responder, mirroring the transcript into
+ * its chronicle entry so the log carries the answers, not just the question.
+ */
+function advanceDiscussion(state: GameState, response: Discussion['responses'][number] | null): GameState {
+  const disc = state.discussion!;
+  const responses = response ? [...disc.responses, response] : disc.responses;
+  const expectedResponders = disc.expectedResponders.slice(1);
+  const complete = expectedResponders.length === 0;
+
+  const newState: GameState = {
     ...state,
-    discussion: { ...state.discussion, responses, expectedResponders },
+    discussion: { ...disc, responses, expectedResponders },
+    ...(complete ? { phase: 'playing' as const, turnPhase: 'turn-complete' as const } : {}),
   };
+
+  return amendLastEvent(
+    newState,
+    e => e.type === 'discussion' && e.discussion?.complete === false,
+    e => ({ ...e, discussion: { ...e.discussion!, responses, complete } }),
+  );
 }
 
 export function handleStartProject(
@@ -240,37 +310,83 @@ export function handleStartProject(
 
   const project: Project = {
     id: generateId(),
-    name,
-    description,
+    name: name.trim(),
+    description: description.trim(),
     weeksRemaining: duration,
     position,
     createdBy: playerId,
     completed: false,
     failed: false,
+    resolution: null,
   };
 
-  let newState = {
+  const newState = {
     ...state,
     projects: [...state.projects, project],
     turnPhase: 'turn-complete' as const,
   };
-  return addEvent(newState, playerId, 'project-started', `Started project: "${name}" (${duration} weeks)`);
+  return addEvent(newState, playerId, 'project-started', project.name, {
+    detail: project.description || undefined,
+    projectId: project.id,
+  });
 }
 
 export function handleEndTurn(state: GameState, playerId: string): GameState | { error: string } {
   if (state.turnOrder[state.activePlayerIndex] !== playerId) return { error: 'Not your turn' };
   if (state.turnPhase !== 'turn-complete') return { error: 'Turn not complete yet' };
 
-  // Tick down projects
   let newState = tickProjects(state);
-  // Log completed projects
-  for (const p of newState.projects) {
-    if (p.completed && !state.projects.find(op => op.id === p.id)?.completed) {
-      newState = addEvent(newState, playerId, 'project-completed', `Project completed: "${p.name}"`);
-    }
+
+  // Any project whose last die just came off needs a word on how it went, and
+  // the player who ran the week out is the one to give it.
+  const justFinished = newState.projects.filter(
+    p => p.completed && !state.projects.find(op => op.id === p.id)?.completed,
+  );
+  for (const p of justFinished) {
+    newState = addEvent(newState, playerId, 'project-completed', p.name, { projectId: p.id });
+  }
+
+  if (justFinished.length > 0) {
+    return {
+      ...newState,
+      pendingResolutions: [...newState.pendingResolutions, ...justFinished.map(p => p.id)],
+      turnPhase: 'resolve-project',
+    };
   }
 
   return advanceTurn(newState);
+}
+
+/**
+ * Record how a resolved project turned out. Hanging resolutions block the end
+ * of the turn, so clearing the last one is what finally passes the week on.
+ */
+export function handleResolveProject(
+  state: GameState, playerId: string, projectId: string, resolution: string,
+): GameState | { error: string } {
+  if (state.turnOrder[state.activePlayerIndex] !== playerId) return { error: 'Not your turn' };
+  if (!state.pendingResolutions.includes(projectId)) return { error: 'Nothing to resolve for that project' };
+
+  const text = resolution.trim();
+  let newState: GameState = {
+    ...state,
+    projects: state.projects.map(p => (p.id === projectId ? { ...p, resolution: text || null } : p)),
+    pendingResolutions: state.pendingResolutions.filter(id => id !== projectId),
+  };
+
+  if (text) {
+    newState = amendLastEvent(
+      newState,
+      e => e.projectId === projectId && (e.type === 'project-completed' || e.type === 'project-failed'),
+      e => ({ ...e, detail: text }),
+    );
+  }
+
+  // Everything resolved, so the turn that was waiting on them can now end.
+  if (newState.pendingResolutions.length === 0 && newState.turnPhase === 'resolve-project') {
+    return advanceTurn(newState);
+  }
+  return newState;
 }
 
 export function handleContempt(state: GameState, playerId: string, action: 'take' | 'discard', reason?: string): GameState {
@@ -280,10 +396,9 @@ export function handleContempt(state: GameState, playerId: string, action: 'take
     return { ...p, contemptTokens: Math.max(0, p.contemptTokens + delta) };
   });
 
-  let newState = { ...state, players };
+  const newState = { ...state, players };
   const type = action === 'take' ? 'contempt-taken' : 'contempt-discarded';
-  const text = action === 'take' ? 'Took a contempt token' : `Discarded a contempt token: ${reason || ''}`;
-  return addEvent(newState, playerId, type, text);
+  return addEvent(newState, playerId, type, (reason ?? '').trim());
 }
 
 export function handleAddAbundance(state: GameState, playerId: string, resource: string): GameState {
@@ -308,26 +423,117 @@ export function handleAddName(state: GameState, name: string): GameState {
   return { ...state, names: [...state.names, name] };
 }
 
-export function handleProjectFinishEarly(state: GameState, projectId: string, playerId: string): GameState | { error: string } {
+/**
+ * Cards routinely hand out or take away project dice, so the dice count is
+ * directly editable. Setting a count on a resolved project puts it back in
+ * progress; taking the last die off finishes it and asks for a resolution.
+ */
+export function handleProjectSetDice(
+  state: GameState, playerId: string, projectId: string, weeksRemaining: number,
+): GameState | { error: string } {
   const project = state.projects.find(p => p.id === projectId);
   if (!project) return { error: 'Project not found' };
-  if (project.completed || project.failed) return { error: 'Project already done' };
 
-  const projects = state.projects.map(p =>
-    p.id === projectId ? { ...p, weeksRemaining: 0, completed: true } : p
+  const dice = Math.round(weeksRemaining);
+  if (dice < 0 || dice > MAX_PROJECT_WEEKS) {
+    return { error: `Dice must be between 0 and ${MAX_PROJECT_WEEKS}` };
+  }
+
+  if (dice === 0) return setProjectStatus(state, playerId, projectId, 'completed');
+
+  const newState: GameState = {
+    ...state,
+    projects: state.projects.map(p => (
+      p.id === projectId
+        ? { ...p, weeksRemaining: dice, completed: false, failed: false, resolution: null }
+        : p
+    )),
+    // Back in progress, so any outstanding resolution request is moot.
+    pendingResolutions: state.pendingResolutions.filter(id => id !== projectId),
+  };
+
+  const wasResolved = project.completed || project.failed;
+  const text = wasResolved
+    ? `back in progress with ${dice} ${dice === 1 ? 'die' : 'dice'}`
+    : `now at ${dice} ${dice === 1 ? 'die' : 'dice'}`;
+  return maybeAdvanceAfterResolution(
+    addEvent(newState, playerId, 'project-changed', project.name, { detail: text, projectId }),
   );
-  let newState = { ...state, projects };
-  return addEvent(newState, playerId, 'project-completed', `Project finished early: "${project.name}"`);
 }
 
-export function handleProjectFail(state: GameState, projectId: string, playerId: string): GameState | { error: string } {
+export function handleProjectSetStatus(
+  state: GameState, playerId: string, projectId: string, status: ProjectStatus,
+): GameState | { error: string } {
+  if (status === 'active') {
+    const project = state.projects.find(p => p.id === projectId);
+    if (!project) return { error: 'Project not found' };
+    const dice = project.weeksRemaining > 0 ? project.weeksRemaining : MIN_PROJECT_WEEKS;
+    return handleProjectSetDice(state, playerId, projectId, dice);
+  }
+  return setProjectStatus(state, playerId, projectId, status);
+}
+
+function setProjectStatus(
+  state: GameState, playerId: string, projectId: string, status: 'completed' | 'failed',
+): GameState | { error: string } {
   const project = state.projects.find(p => p.id === projectId);
   if (!project) return { error: 'Project not found' };
-  if (project.completed || project.failed) return { error: 'Project already done' };
 
-  const projects = state.projects.map(p =>
-    p.id === projectId ? { ...p, failed: true } : p
+  const completed = status === 'completed';
+  const alreadyThere = completed ? project.completed : project.failed;
+  if (alreadyThere) return state;
+
+  let newState: GameState = {
+    ...state,
+    projects: state.projects.map(p => (
+      p.id === projectId
+        ? { ...p, weeksRemaining: 0, completed, failed: !completed, resolution: null }
+        : p
+    )),
+  };
+
+  newState = addEvent(
+    newState, playerId,
+    completed ? 'project-completed' : 'project-failed',
+    project.name, { projectId },
   );
-  let newState = { ...state, projects };
-  return addEvent(newState, playerId, 'project-failed', `Project failed: "${project.name}"`);
+
+  // A project that just landed either way wants a word on how it went.
+  return {
+    ...newState,
+    pendingResolutions: newState.pendingResolutions.includes(projectId)
+      ? newState.pendingResolutions
+      : [...newState.pendingResolutions, projectId],
+  };
+}
+
+/** Some cards wipe a project off the map entirely. */
+export function handleProjectRemove(
+  state: GameState, playerId: string, projectId: string,
+): GameState | { error: string } {
+  const project = state.projects.find(p => p.id === projectId);
+  if (!project) return { error: 'Project not found' };
+
+  const newState: GameState = {
+    ...state,
+    projects: state.projects.filter(p => p.id !== projectId),
+    pendingResolutions: state.pendingResolutions.filter(id => id !== projectId),
+  };
+  return maybeAdvanceAfterResolution(
+    addEvent(newState, playerId, 'project-changed', project.name, {
+      detail: 'abandoned and struck from the map',
+      projectId,
+    }),
+  );
+}
+
+/**
+ * A turn held open only for resolutions can end once the last one goes away,
+ * whether it was narrated, reactivated or removed.
+ */
+function maybeAdvanceAfterResolution(state: GameState): GameState {
+  if (state.turnPhase === 'resolve-project' && state.pendingResolutions.length === 0) {
+    return advanceTurn(state);
+  }
+  return state;
 }

@@ -8,7 +8,9 @@ export type IconName =
   | 'bucket' | 'hand' | 'undo' | 'redo'
   | 'target' | 'fit' | 'hundred'
   | 'file' | 'save' | 'open' | 'image' | 'trash'
-  | 'users' | 'lock' | 'caret';
+  | 'users' | 'lock' | 'caret'
+  | 'discover' | 'discuss' | 'project'
+  | 'check' | 'cross' | 'clock' | 'quote';
 
 const PATHS: Record<IconName, JSX.Element> = {
   pen: <path d="M4 20l1-4L16 5a2 2 0 013 3L8 19l-4 1z" />,
@@ -35,6 +37,15 @@ const PATHS: Record<IconName, JSX.Element> = {
   users: <path d="M16 20v-1.5a4 4 0 00-4-4H7a4 4 0 00-4 4V20M9.5 10.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM17 4.2a3.5 3.5 0 010 6.6M21 20v-1.5a4 4 0 00-3-3.8" />,
   lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 018 0v3" /></>,
   caret: <path d="M5 9l7 7 7-7" />,
+  // The three turn actions. These glyphs are shared by the action panel, the
+  // chronicle and the sidebar tabs so one action always looks like itself.
+  discover: <path d="M12 3l2.6 5.8 6.4.7-4.8 4.3 1.4 6.2-5.6-3.3-5.6 3.3 1.4-6.2L3 9.5l6.4-.7z" />,
+  discuss: <path d="M3 6a2 2 0 012-2h14a2 2 0 012 2v9a2 2 0 01-2 2H9l-5 4v-4H5a2 2 0 01-2-2zM7.5 9h9M7.5 12.5h5" />,
+  project: <path d="M13.5 3.5l7 7-2.5 2.5-7-7zM11 6L4 13v4l4 .5L15 10M3.5 20.5h8" />,
+  check: <path d="M4 12.5l5.5 5.5L20 6.5" />,
+  cross: <path d="M6 6l12 12M18 6L6 18" />,
+  clock: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.5 2.5" /></>,
+  quote: <path d="M9 6c-3 1.5-4.5 4-4.5 7.5A3.5 3.5 0 108 10M20 6c-3 1.5-4.5 4-4.5 7.5A3.5 3.5 0 1019 10" />,
 };
 
 /** Solid-filled glyphs read better than outlines at this size. */

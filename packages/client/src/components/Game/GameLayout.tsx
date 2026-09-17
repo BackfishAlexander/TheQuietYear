@@ -6,9 +6,10 @@ import { TurnBar } from './TurnBar';
 import { ActionPanel } from './ActionPanel';
 import { CardDisplay } from './CardDisplay';
 import { ResourceCard } from './ResourceCard';
-import { ProjectList } from './ProjectList';
+import { SidebarTabs } from './SidebarTabs';
 import { ContemptBar } from './ContemptBar';
 import { Discussion } from './Discussion';
+import { ProjectResolution } from './ProjectResolution';
 import { SetupFlow } from './SetupFlow';
 import { EventLog } from './EventLog';
 import { SEASON_COLORS } from '@quiet-year/shared';
@@ -31,11 +32,11 @@ export function GameLayout({ socket }: { socket: TypedSocket }) {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* Left sidebar */}
         <div style={{
-          width: 260, borderRight: '1px solid #e8e0d0', background: '#faf6ee',
+          width: 278, borderRight: '1px solid #e8e0d0', background: '#faf6ee',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}>
           <ResourceCard socket={socket} />
-          <ProjectList socket={socket} />
+          <SidebarTabs socket={socket} />
           <ContemptBar socket={socket} />
         </div>
 
@@ -58,11 +59,14 @@ export function GameLayout({ socket }: { socket: TypedSocket }) {
           {isDiscussion && gameState.discussion && (
             <Discussion socket={socket} />
           )}
+
+          {/* A project that just landed wants a word on how it turned out */}
+          <ProjectResolution socket={socket} />
         </div>
 
         {/* Right sidebar: event log */}
         <div style={{
-          width: 240, borderLeft: '1px solid #e8e0d0', background: '#faf6ee',
+          width: 278, borderLeft: '1px solid #e8e0d0', background: '#faf6ee',
           overflow: 'hidden',
         }}>
           <EventLog />
