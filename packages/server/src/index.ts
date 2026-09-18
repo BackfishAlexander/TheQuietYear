@@ -19,6 +19,9 @@ const io = new Server(server, {
     origin: '*',
     methods: ['GET', 'POST'],
   },
+  // A year's worth of map and chronicle travels in one message when a game is
+  // loaded from a file, which the 1MB default is nowhere near big enough for.
+  maxHttpBufferSize: 25e6,
 });
 
 io.on('connection', (socket) => {

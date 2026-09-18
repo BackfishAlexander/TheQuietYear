@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import type { ClientEvents, ServerEvents } from '@quiet-year/shared';
 import { useGameStore } from '../store/gameStore';
+import { saveGameFile } from '../canvas/persist';
 
 const SERVER_URL = import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin;
 
@@ -25,7 +26,7 @@ export function useSocket() {
     setPlayerId, setRoomId, setConnected,
     setRoomState, setGameState,
     upsertStroke, setStrokes, removeStroke,
-    setError,
+    setError, leaveRoom,
   } = useGameStore();
 
   useEffect(() => {
@@ -65,6 +66,18 @@ export function useSocket() {
       setGameState(state);
     });
 
+    // The server answers an export request with the whole game; the only
+    // thing left to do with it is put it on disk.
+    socket.on('game:save', (save) => {
+      saveGameFile(save);
+    });
+
+    socket.on('room:kicked', ({ message }) => {
+      leaveRoom();
+      setError(message);
+      setTimeout(() => setError(null), 5000);
+    });
+
     socket.on('draw:stroke', (stroke) => {
       upsertStroke(stroke);
     });
@@ -89,6 +102,8 @@ export function useSocket() {
       socket.off('room:state');
       socket.off('room:error');
       socket.off('game:state');
+      socket.off('game:save');
+      socket.off('room:kicked');
       socket.off('draw:stroke');
       socket.off('draw:history');
       socket.off('draw:remove');

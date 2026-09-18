@@ -1,8 +1,13 @@
+import type { Socket } from 'socket.io-client';
+import type { ClientEvents, ServerEvents } from '@quiet-year/shared';
 import { useGameStore } from '../../store/gameStore';
 import { ChronicleEntry } from './Chronicle';
+import { Icon } from './ToolIcons';
 
-export function GameOver() {
-  const { gameState } = useGameStore();
+type TypedSocket = Socket<ServerEvents, ClientEvents>;
+
+export function GameOver({ socket }: { socket: TypedSocket }) {
+  const { gameState, leaveRoom } = useGameStore();
   if (!gameState) return null;
 
   const completedProjects = gameState.projects.filter(p => p.completed);
@@ -98,6 +103,22 @@ export function GameOver() {
           </div>
         </div>
 
+        {/* The year is over, so everyone gets to keep a copy of it. */}
+        <div style={{
+          display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 24,
+        }}>
+          <button onClick={() => socket.emit('game:export')} style={downloadButtonStyle}>
+            <Icon name="save" size={15} /> Download the whole game
+          </button>
+          <button onClick={leaveRoom} style={{ ...downloadButtonStyle, background: 'transparent' }}>
+            Back to the start
+          </button>
+        </div>
+        <p style={{ color: '#8888aa', fontSize: 12, marginBottom: 32 }}>
+          Keep the file: opening it from the front door replays the map, the
+          chronicle and everything on the resource card.
+        </p>
+
         <p style={{ color: '#555', fontSize: 13, fontStyle: 'italic' }}>
           The limits on communication are now lifted. Discuss what happened
           and what the Frost Shepherds might mean for your community.
@@ -106,6 +127,13 @@ export function GameOver() {
     </div>
   );
 }
+
+const downloadButtonStyle: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8,
+  padding: '10px 18px', fontFamily: 'Georgia, serif', fontSize: 14,
+  background: 'rgba(255,255,255,0.08)', color: '#e8e8e8',
+  border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, cursor: 'pointer',
+};
 
 const statBox: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)', padding: 16, borderRadius: 8,

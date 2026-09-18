@@ -1,5 +1,7 @@
-import type { CanvasFile, Stroke } from '@quiet-year/shared';
-import { normalizeStrokes, contentBounds } from '@quiet-year/shared';
+import type { CanvasFile, GameSaveFile, Stroke } from '@quiet-year/shared';
+import {
+  normalizeStrokes, contentBounds, normalizeSaveFile, SAVE_FILE_EXTENSION,
+} from '@quiet-year/shared';
 import { renderToCanvas } from './render';
 
 const FILE_FORMAT = 'quiet-year-canvas';
@@ -33,6 +35,28 @@ export function saveCanvasFile(strokes: Stroke[], roomId: string | null) {
   };
   const name = `quiet-year-map-${roomId ?? 'local'}-${timestamp()}${CANVAS_FILE_EXTENSION}`;
   download(new Blob([JSON.stringify(file)], { type: 'application/json' }), name);
+}
+
+/** Write a whole game - state, chronicle and map - out to a file. */
+export function saveGameFile(save: GameSaveFile) {
+  const name = `quiet-year-game-${save.roomId}-${timestamp()}${SAVE_FILE_EXTENSION}`;
+  download(new Blob([JSON.stringify(save)], { type: 'application/json' }), name);
+}
+
+/**
+ * Parse a picked game file. The same reader serves both purposes a save has:
+ * handing it back to the server to resume, and opening it here to read.
+ */
+export async function readGameSaveFile(
+  file: File,
+): Promise<{ save: GameSaveFile } | { error: string }> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await file.text());
+  } catch {
+    return { error: 'That file is not valid JSON' };
+  }
+  return normalizeSaveFile(parsed);
 }
 
 /** Parse a picked file back into strokes, or explain why it cannot be used. */

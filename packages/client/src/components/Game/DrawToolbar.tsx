@@ -4,6 +4,7 @@ import type { ClientEvents, ServerEvents, DrawTool, Player, Stroke } from '@quie
 import { PALETTE, STROKE_WIDTHS } from '@quiet-year/shared';
 import { useGameStore } from '../../store/gameStore';
 import { exportPng, readCanvasFile, saveCanvasFile, CANVAS_FILE_EXTENSION } from '../../canvas/persist';
+import { moveInOrder } from '../../lib/roster';
 import { Icon, type IconName } from './ToolIcons';
 
 type TypedSocket = Socket<ServerEvents, ClientEvents>;
@@ -61,6 +62,7 @@ export function DrawToolbar(props: DrawToolbarProps) {
   } = props;
 
   const setError = useGameStore(s => s.setError);
+  const roomState = useGameStore(s => s.roomState);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +99,20 @@ export function DrawToolbar(props: DrawToolbarProps) {
       setTimeout(() => setError(null), 4000);
     }
     setOpenMenu(null);
+  }
+
+  function reorder(index: number, delta: number) {
+    const order = moveInOrder(players.map(p => p.id), index, delta);
+    socket.emit('admin:reorderPlayers', { order });
+  }
+
+  function handleKick(targetId: string, targetName: string) {
+    if (!window.confirm(
+      `Remove ${targetName} from the room?\n\n` +
+      'Their marks stay on the map, but they leave the turn order. They can ' +
+      'come back later if you let new players join.',
+    )) return;
+    socket.emit('admin:kickPlayer', { playerId: targetId });
   }
 
   function handleClear() {
@@ -341,7 +357,7 @@ export function DrawToolbar(props: DrawToolbarProps) {
       >
         <MenuTitle>This map</MenuTitle>
         <MenuButton onClick={() => { saveCanvasFile(strokes, roomId); setOpenMenu(null); }}>
-          <Icon name="save" size={14} /> Save to a file
+          <Icon name="save" size={14} /> Save the map to a file
         </MenuButton>
         <MenuButton onClick={handleExportPng}>
           <Icon name="image" size={14} /> Export as PNG
@@ -349,6 +365,13 @@ export function DrawToolbar(props: DrawToolbarProps) {
         {isHost ? (
           <>
             <MenuTitle>Host only</MenuTitle>
+            <p style={{ ...hintStyle, marginTop: 0, marginBottom: 6 }}>
+              A game file keeps the chronicle, the map and the undrawn deck, so
+              you can pick this year back up another day.
+            </p>
+            <MenuButton onClick={() => { socket.emit('game:export'); setOpenMenu(null); }}>
+              <Icon name="save" size={14} /> Save the whole game…
+            </MenuButton>
             <MenuButton onClick={() => fileInputRef.current?.click()}>
               <Icon name="open" size={14} /> Load a saved map…
             </MenuButton>
@@ -374,20 +397,35 @@ export function DrawToolbar(props: DrawToolbarProps) {
           name="admin"
           open={openMenu === 'admin'}
           onToggle={toggle}
-          trigger={<ToolButton icon="users" label="Drawing permissions" caret onClick={() => toggle('admin')} />}
+          trigger={<ToolButton icon="users" label="The table" caret onClick={() => toggle('admin')} />}
         >
-          <MenuTitle>Who can draw</MenuTitle>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 210 }}>
-            {players.map(player => {
+          <MenuTitle>The table</MenuTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 250 }}>
+            {players.map((player, i) => {
               const self = player.id === playerId;
               return (
                 <div key={player.id} style={permissionRowStyle}>
+                  <span style={{ fontSize: 11, color: '#a8a094', width: 12, flexShrink: 0 }}>{i + 1}</span>
                   <span style={{ width: 9, height: 9, borderRadius: '50%', background: player.color, flexShrink: 0 }} />
                   <span style={{ flex: 1, fontSize: 13, opacity: player.connected ? 1 : 0.5 }}>
                     {player.name}
                     {self && <span style={{ color: '#999', fontSize: 11 }}> (you)</span>}
                     {!player.connected && <span style={{ color: '#999', fontSize: 11 }}> · away</span>}
                   </span>
+                  <MiniButton
+                    label="Move earlier in the order"
+                    disabled={i === 0}
+                    onClick={() => reorder(i, -1)}
+                  >
+                    ↑
+                  </MiniButton>
+                  <MiniButton
+                    label="Move later in the order"
+                    disabled={i === players.length - 1}
+                    onClick={() => reorder(i, 1)}
+                  >
+                    ↓
+                  </MiniButton>
                   <Switch
                     checked={player.canDraw}
                     // The host always keeps their own access.
@@ -395,20 +433,40 @@ export function DrawToolbar(props: DrawToolbarProps) {
                     title={self ? 'You always keep drawing access' : player.canDraw ? 'Turn drawing off' : 'Turn drawing on'}
                     onChange={next => socket.emit('admin:setDrawPermission', { playerId: player.id, canDraw: next })}
                   />
+                  <MiniButton
+                    label={self ? 'You cannot remove yourself' : `Remove ${player.name} from the room`}
+                    disabled={self}
+                    danger
+                    onClick={() => handleKick(player.id, player.name)}
+                  >
+                    <Icon name="cross" size={11} />
+                  </MiniButton>
                 </div>
               );
             })}
           </div>
           <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
             <MenuButton onClick={() => socket.emit('admin:setAllDrawPermissions', { canDraw: true })}>
-              Everyone on
+              Everyone draws
             </MenuButton>
             <MenuButton onClick={() => socket.emit('admin:setAllDrawPermissions', { canDraw: false })}>
-              Everyone off
+              Nobody draws
             </MenuButton>
           </div>
+
+          <MenuTitle>Newcomers</MenuTitle>
+          <div style={{ ...permissionRowStyle, gap: 10 }}>
+            <span style={{ flex: 1, fontSize: 13 }}>Let new players join mid-game</span>
+            <Switch
+              checked={roomState?.allowMidGameJoin ?? false}
+              title={roomState?.allowMidGameJoin ? 'Close the room' : 'Open the room'}
+              onChange={allow => socket.emit('admin:setAllowMidGameJoin', { allow })}
+            />
+          </div>
           <p style={hintStyle}>
-            Players with drawing off can still pan, zoom, and save the map — they just can't mark it.
+            Someone who was already here always gets back in by joining with the
+            same name — this is only for people who were never at the table.
+            They take the last seat in the order; the arrows move anyone.
           </p>
         </Popover>
       )}
@@ -495,6 +553,31 @@ function Switch({ checked, disabled, title, onChange }: {
       }}
     >
       <span style={{ width: 15, height: 15, borderRadius: '50%', background: 'white' }} />
+    </button>
+  );
+}
+
+/** A square icon-sized button for the row-level admin controls. */
+function MiniButton({ label, disabled, danger, onClick, children }: {
+  label: string; disabled?: boolean; danger?: boolean;
+  onClick: () => void; children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      style={{
+        width: 20, height: 20, padding: 0, borderRadius: 4,
+        border: '1px solid #ded7c9', background: 'white',
+        color: disabled ? '#c9c2b4' : danger ? '#b91c1c' : '#4a4a4a',
+        cursor: disabled ? 'default' : 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 11, lineHeight: 1, flexShrink: 0,
+      }}
+    >
+      {children}
     </button>
   );
 }

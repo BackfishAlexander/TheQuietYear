@@ -4,15 +4,19 @@ import { CreateJoin } from './components/Lobby/CreateJoin';
 import { WaitingRoom } from './components/Lobby/WaitingRoom';
 import { GameLayout } from './components/Game/GameLayout';
 import { GameOver } from './components/Game/GameOver';
+import { GameReview } from './components/Review/GameReview';
 
 export default function App() {
   const socket = useSocket();
-  const { roomState, gameState, error } = useGameStore();
+  const { roomState, gameState, review, error } = useGameStore();
 
   // Determine which screen to show
-  let screen: 'lobby' | 'waiting' | 'game' | 'gameover' = 'lobby';
+  let screen: 'lobby' | 'waiting' | 'game' | 'gameover' | 'review' = 'lobby';
 
-  if (gameState?.phase === 'game-over') {
+  // Reading a saved game is a solitary thing, and takes over the window.
+  if (review) {
+    screen = 'review';
+  } else if (gameState?.phase === 'game-over') {
     screen = 'gameover';
   } else if (gameState) {
     screen = 'game';
@@ -34,7 +38,8 @@ export default function App() {
       {screen === 'lobby' && <CreateJoin socket={socket} />}
       {screen === 'waiting' && <WaitingRoom socket={socket} />}
       {screen === 'game' && <GameLayout socket={socket} />}
-      {screen === 'gameover' && <GameOver />}
+      {screen === 'gameover' && <GameOver socket={socket} />}
+      {screen === 'review' && review && <GameReview save={review} />}
     </div>
   );
 }

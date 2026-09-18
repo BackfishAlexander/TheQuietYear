@@ -1,8 +1,66 @@
+import { useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import type { ClientEvents, ServerEvents } from '@quiet-year/shared';
 import { useGameStore } from '../../store/gameStore';
 
 type TypedSocket = Socket<ServerEvents, ClientEvents>;
+
+/**
+ * The room code, always in reach: after a game is loaded from a file it is
+ * the only way the rest of the table gets back in, and it is a click to copy.
+ */
+function RoomCode({ roomId, away }: { roomId: string; away: string[] }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(roomId);
+    } catch {
+      // Clipboard access can be refused; the code is on screen regardless.
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1400);
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button
+        onClick={copy}
+        title={`Room code ${roomId} — click to copy. Anyone joining with this code and the name they played under gets their seat back.`}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '3px 9px',
+          background: copied ? '#4a7c5914' : 'transparent',
+          border: '1px solid #e0d8c8', borderRadius: 12, cursor: 'pointer',
+          fontFamily: 'Georgia, serif',
+        }}
+      >
+        <span style={{
+          fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#b0a795',
+        }}>
+          Room
+        </span>
+        <span style={{
+          fontFamily: 'monospace', fontSize: 13, fontWeight: 700,
+          letterSpacing: '0.12em', color: '#2c2c2c',
+        }}>
+          {roomId}
+        </span>
+        <span style={{ fontSize: 10, color: copied ? '#4a7c59' : '#c3bbac' }}>
+          {copied ? 'copied' : 'copy'}
+        </span>
+      </button>
+
+      {away.length > 0 && (
+        <span
+          title={`${away.join(', ')} can rejoin with the room code, using the same name.`}
+          style={{ fontSize: 11, color: '#a16207', whiteSpace: 'nowrap' }}
+        >
+          waiting for {away.length === 1 ? away[0] : `${away.length} players`}
+        </span>
+      )}
+    </div>
+  );
+}
 
 const SUIT_SYMBOLS: Record<string, string> = {
   hearts: '\u2665',
@@ -12,8 +70,13 @@ const SUIT_SYMBOLS: Record<string, string> = {
 };
 
 export function TurnBar({ socket: _socket, seasonColor }: { socket: TypedSocket; seasonColor: string }) {
-  const { gameState, playerId } = useGameStore();
+  const { gameState, roomState, playerId } = useGameStore();
   if (!gameState) return null;
+
+  const roomId = roomState?.roomId ?? gameState.roomId;
+  // A game picked back up from a file starts with everyone but the loader
+  // still away, so the table needs the code in front of them to get back in.
+  const away = gameState.players.filter(p => !p.connected);
 
   const activePlayer = gameState.players.find(
     p => p.id === gameState.turnOrder[gameState.activePlayerIndex]
@@ -33,6 +96,11 @@ export function TurnBar({ socket: _socket, seasonColor }: { socket: TypedSocket;
       height: 42,
       fontSize: 13,
     }}>
+      <RoomCode roomId={roomId} away={away.map(p => p.name)} />
+
+      {/* Separator */}
+      <div style={{ width: 1, height: 18, background: '#e0d8c8' }} />
+
       {/* Season pill */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
@@ -102,7 +170,7 @@ export function TurnBar({ socket: _socket, seasonColor }: { socket: TypedSocket;
         {/* Player list compact */}
         <div style={{ display: 'flex', gap: 3, marginLeft: 8 }}>
           {gameState.players.map(p => (
-            <div key={p.id} style={{
+            <div key={p.id} title={p.connected ? p.name : `${p.name} — away`} style={{
               width: 6, height: 6, borderRadius: '50%',
               background: p.color,
               opacity: p.connected ? 1 : 0.3,

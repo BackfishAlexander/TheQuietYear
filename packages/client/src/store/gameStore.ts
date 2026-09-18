@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GameState, RoomState, Stroke } from '@quiet-year/shared';
+import type { GameSaveFile, GameState, RoomState, Stroke } from '@quiet-year/shared';
 
 interface GameStore {
   // Connection
@@ -17,6 +17,9 @@ interface GameStore {
   // Drawing
   strokes: Stroke[];
 
+  /** A finished game opened from a file, read on its own away from any room. */
+  review: GameSaveFile | null;
+
   // Error
   error: string | null;
 
@@ -31,7 +34,10 @@ interface GameStore {
   upsertStroke: (stroke: Stroke) => void;
   setStrokes: (strokes: Stroke[]) => void;
   removeStroke: (strokeId: string) => void;
+  setReview: (save: GameSaveFile | null) => void;
   setError: (error: string | null) => void;
+  /** Drop every trace of the current room and go back to the front door. */
+  leaveRoom: () => void;
 }
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -42,6 +48,7 @@ export const useGameStore = create<GameStore>((set) => ({
   roomState: null,
   gameState: null,
   strokes: [],
+  review: null,
   error: null,
 
   setPlayerId: (id) => set({ playerId: id }),
@@ -60,5 +67,9 @@ export const useGameStore = create<GameStore>((set) => ({
   }),
   setStrokes: (strokes) => set({ strokes: [...strokes].sort((a, b) => a.seq - b.seq) }),
   removeStroke: (strokeId) => set((s) => ({ strokes: s.strokes.filter(st => st.id !== strokeId) })),
+  setReview: (review) => set({ review }),
   setError: (error) => set({ error }),
+  leaveRoom: () => set({
+    playerId: null, roomId: null, roomState: null, gameState: null, strokes: [],
+  }),
 }));

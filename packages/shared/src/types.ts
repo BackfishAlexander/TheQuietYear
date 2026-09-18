@@ -167,6 +167,8 @@ export interface RoomState {
   players: Player[];
   hostId: string;
   gameStarted: boolean;
+  /** Host-controlled: may someone new take a seat after the year has begun? */
+  allowMidGameJoin: boolean;
 }
 
 // Drawing types - separate from game state.
@@ -223,6 +225,20 @@ export interface FillStroke extends StrokeBase {
 
 export type Stroke = PathStroke | ShapeStroke | FillStroke;
 
+/**
+ * The on-disk shape of a whole saved game: the state of the year plus every
+ * mark on the map. Written by the server so the undrawn deck is real, which
+ * is what lets a loaded game carry on dealing the cards it would have dealt.
+ */
+export interface GameSaveFile {
+  format: 'quiet-year-save';
+  version: number;
+  savedAt: number;
+  roomId: string;
+  game: GameState;
+  strokes: Stroke[];
+}
+
 /** The on-disk shape of a saved canvas file. */
 export interface CanvasFile {
   format: 'quiet-year-canvas';
@@ -236,6 +252,9 @@ export interface CanvasFile {
 export interface ClientEvents {
   'room:create': (data: { playerName: string }) => void;
   'room:join': (data: { roomId: string; playerName: string }) => void;
+  'room:createFromSave': (data: { playerName: string; save: unknown }) => void;
+  /** Ask the server for a save file of everything so far. */
+  'game:export': () => void;
   'game:start': () => void;
   'setup:declareResource': (data: { resource: string }) => void;
   'setup:voteAbundance': (data: { resource: string }) => void;
@@ -269,6 +288,10 @@ export interface ClientEvents {
   'draw:load': (data: { strokes: Stroke[] }) => void;
   'admin:setDrawPermission': (data: { playerId: string; canDraw: boolean }) => void;
   'admin:setAllDrawPermissions': (data: { canDraw: boolean }) => void;
+  'admin:kickPlayer': (data: { playerId: string }) => void;
+  'admin:setAllowMidGameJoin': (data: { allow: boolean }) => void;
+  /** Re-seat the table: `order` is every current player id, in the new order. */
+  'admin:reorderPlayers': (data: { order: string[] }) => void;
 }
 
 // Server -> Client events
@@ -278,6 +301,10 @@ export interface ServerEvents {
   'room:state': (data: RoomState) => void;
   'room:error': (data: { message: string }) => void;
   'game:state': (data: GameState) => void;
+  /** The answer to 'game:export', ready to be written to disk. */
+  'game:save': (data: GameSaveFile) => void;
+  /** The host removed this player from the room. */
+  'room:kicked': (data: { message: string }) => void;
   'draw:stroke': (data: Stroke) => void;
   'draw:history': (data: Stroke[]) => void;
   /** A stroke was undone (or removed by an admin) and should disappear. */

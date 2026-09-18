@@ -1,5 +1,8 @@
 import { Server, Socket } from 'socket.io';
-import { ClientEvents, ServerEvents, GameState, ResourceKind, normalizeStroke, normalizeStrokes } from '@quiet-year/shared';
+import {
+  ClientEvents, ServerEvents, GameState, ResourceKind,
+  normalizeStroke, normalizeStrokes, normalizeSaveFile,
+} from '@quiet-year/shared';
 import * as roomManager from './roomManager.js';
 import * as gameManager from './gameManager.js';
 
@@ -64,10 +67,17 @@ function adminRoom(socket: TypedSocket): roomManager.Room | undefined {
   const room = roomManager.getRoom(roomId);
   if (!room) return undefined;
   if (!roomManager.isHost(room, playerId)) {
-    socket.emit('room:error', { message: 'Only the host can change drawing permissions' });
+    socket.emit('room:error', { message: 'Only the host can do that' });
     return undefined;
   }
   return room;
+}
+
+/** Everything a socket needs on arrival: the roster, the game, the map. */
+function sendRoomSnapshot(io: Server, socket: TypedSocket, room: roomManager.Room) {
+  broadcastRoomState(io, room.state.roomId);
+  if (room.game) broadcastGameState(io, room.state.roomId);
+  socket.emit('draw:history', room.strokes);
 }
 
 function changeResource(
@@ -92,17 +102,60 @@ export function registerHandlers(io: Server, socket: TypedSocket) {
   });
 
   socket.on('room:join', ({ roomId, playerName }) => {
-    const result = roomManager.joinRoom(roomId.toUpperCase(), playerName, socket.id);
+    const code = roomId.toUpperCase();
+    const result = roomManager.joinRoom(code, playerName, socket.id);
     if ('error' in result) {
       socket.emit('room:error', { message: result.error });
       return;
     }
     const { room, playerId } = result;
-    socket.join(roomId.toUpperCase());
-    socket.data = { roomId: roomId.toUpperCase(), playerId };
+    socket.join(code);
+    socket.data = { roomId: code, playerId };
     socket.emit('room:joined', { playerId });
-    broadcastRoomState(io, roomId.toUpperCase());
-    socket.emit('draw:history', room.strokes);
+    sendRoomSnapshot(io, socket, room);
+  });
+
+  // Pick a year back up from a file: the uploader opens a fresh room around
+  // the saved state and hosts it, and everyone else rejoins by their name.
+  socket.on('room:createFromSave', ({ playerName, save }) => {
+    const name = (playerName ?? '').trim();
+    if (!name) {
+      socket.emit('room:error', { message: 'Enter your name before loading a game' });
+      return;
+    }
+    const parsed = normalizeSaveFile(save);
+    if ('error' in parsed) {
+      socket.emit('room:error', { message: parsed.error });
+      return;
+    }
+    const opened = roomManager.createRoomFromSave(name, socket.id, parsed.save);
+    if ('error' in opened) {
+      socket.emit('room:error', { message: opened.error });
+      return;
+    }
+    const { room, playerId } = opened;
+    socket.join(room.state.roomId);
+    socket.data = { roomId: room.state.roomId, playerId };
+    socket.emit('room:created', { roomId: room.state.roomId, playerId });
+    sendRoomSnapshot(io, socket, room);
+  });
+
+  // A save of everything so far. The undrawn deck is in it, so only the host
+  // may take one while the year is still running; once the Frost Shepherds
+  // have arrived there is nothing left to spoil and anyone can keep a copy.
+  socket.on('game:export', () => {
+    const { roomId, playerId } = (socket.data ?? {}) as { roomId?: string; playerId?: string };
+    const room = roomId ? roomManager.getRoom(roomId) : undefined;
+    if (!room?.game || !playerId) {
+      socket.emit('room:error', { message: 'There is no game to save yet' });
+      return;
+    }
+    if (!roomManager.isHost(room, playerId) && room.game.phase !== 'game-over') {
+      socket.emit('room:error', { message: 'Only the host can save the game while it is running' });
+      return;
+    }
+    const save = roomManager.exportRoom(room);
+    if (save) socket.emit('game:save', save);
   });
 
   // Game start
@@ -375,6 +428,43 @@ export function registerHandlers(io: Server, socket: TypedSocket) {
     }
     broadcastRoomState(io, room.state.roomId);
     if (room.game) broadcastGameState(io, room.state.roomId);
+  });
+
+  socket.on('admin:setAllowMidGameJoin', ({ allow }) => {
+    const room = adminRoom(socket);
+    if (!room) return;
+    roomManager.setAllowMidGameJoin(room, allow === true);
+    broadcastRoomState(io, room.state.roomId);
+  });
+
+  socket.on('admin:reorderPlayers', ({ order }) => {
+    const room = adminRoom(socket);
+    if (!room) return;
+    if (!Array.isArray(order) || !roomManager.reorderPlayers(room, order.map(String))) {
+      socket.emit('room:error', { message: 'That turn order does not match the table' });
+      return;
+    }
+    broadcastRoomState(io, room.state.roomId);
+    if (room.game) broadcastGameState(io, room.state.roomId);
+  });
+
+  socket.on('admin:kickPlayer', ({ playerId: targetId }) => {
+    const room = adminRoom(socket);
+    if (!room) return;
+    const removed = roomManager.kickPlayer(room, targetId);
+    if (!removed) {
+      socket.emit('room:error', { message: 'That player cannot be removed' });
+      return;
+    }
+    const roomId = room.state.roomId;
+    if (removed.socketId) {
+      const kicked = io.sockets.sockets.get(removed.socketId);
+      kicked?.emit('room:kicked', { message: 'The host removed you from the room' });
+      kicked?.leave(roomId);
+      if (kicked) kicked.data = {};
+    }
+    broadcastRoomState(io, roomId);
+    if (room.game) broadcastGameState(io, roomId);
   });
 
   // Disconnect
